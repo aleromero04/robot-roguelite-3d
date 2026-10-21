@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080e15" />
+    <meta name="description" content="Protocol Zero — un experimento de combate robótico 3D." />
+    <title>PROTOCOL ZERO · Sector 01</title>
+  </head>
+  <body>
+    <canvas id="game" aria-label="Arena 3D de combate robótico"></canvas>
+    <div class="vignette"></div>
+    <main id="hud">
+      <header>
+        <div class="brand"><span class="emblem">⏣</span><div><div class="eyebrow">AUTONOMOUS COMBAT SYSTEMS</div><h1>PROTOCOL <strong>ZERO</strong><span class="poc">POC / 01</span></h1></div></div>
+        <div class="sector"><span class="live-dot"></span> <span id="sector-name">SECTOR 01</span> <span class="separator">/</span> <span class="muted">FUNDICIÓN</span><small>37° 23′ N &nbsp; // &nbsp; ENLACE LOCAL</small></div>
+      </header>
+      <div class="side-label">RESTRICTED AREA &nbsp; / &nbsp; ROBOTICS DIVISION</div>
+      <aside class="telemetry"><div class="eyebrow">TELEMETRÍA DE COMBATE</div><div class="stats"><div><b id="kills">00</b><span>NEUTRALIZADOS</span></div><div><b id="time">00:00</b><span>TIEMPO ACTIVO</span></div></div><div class="signal"><i></i><i></i><i></i><i></i><i></i><span id="status">SISTEMAS EN ESPERA</span></div></aside>
+      <div class="progress-hud"><span id="wave">SECCIÓN 01 / 7</span><span id="objective">SIETE SECTORES · UNA UNIDAD</span><small id="weapon-stats">DAÑO 10 · INTERVALO 350 ms</small></div>
+      <section id="boss-hud" class="boss-hud hidden" aria-label="Vida del Boss"><div><strong>BOSS</strong><small id="boss-phase">PHASE 01</small><span id="boss-hp"></span></div><div class="boss-track"><i id="boss-bar"></i></div></section>
+      <div id="notice" role="status"></div>
+      <section id="upgrade-overlay" class="upgrade-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="upgrade-title">
+        <div class="eyebrow" id="upgrade-subtitle">SECCIÓN ASEGURADA</div>
+        <h2 id="upgrade-title">RECONFIGURA <em>TU UNIDAD.</em></h2>
+        <p>Instala un módulo para desbloquear la siguiente compuerta.</p>
+        <div id="upgrade-cards"></div>
+        <small id="repair-preview"></small>
+      </section>
+      <section id="overlay" class="briefing">
+        <div class="eyebrow"><span class="live-dot"></span> PROTOCOLO DE CONTENCIÓN</div>
+        <div class="briefing-index">01 /</div>
+        <h2 id="overlay-title">SIN SEÑAL.<br><em>SIN REFUERZOS.</em></h2>
+        <p id="overlay-copy">Asegura seis sectores y derrota al Boss del Sector 07. Muévete para esquivar; detente para disparar. Recoge el núcleo, instala un módulo y cruza cada compuerta.</p>
+        <div id="enemy-guide" class="enemy-guide"><span><i class="enemy-icon basic"></i>CENTINELA <small>CONTACTO</small></span><span><i class="enemy-icon runner"></i>CORREDOR <small>EMBESTIDA</small></span><span><i class="enemy-icon shooter"></i>DRON <small>DISTANCIA</small></span></div>
+        <button id="start">INICIAR INCURSIÓN <span>↗</span></button>
+        <small id="overlay-hint">WASD / FLECHAS · DISPARO SOLO AL DETENERTE</small>
+      </section>
+      <footer>
+        <section class="vitals"><div class="unit-mark">Z<span>01</span></div><div class="vitals-main"><div class="vitals-title">UNIDAD Z–01 <span id="hp-value">80 <small>/ 80</small></span></div><div class="health-track"><div id="hp-bar"></div></div><div id="defense-status"></div><div class="vitals-bottom"><span id="hp-status">INTEGRIDAD ESTRUCTURAL</span><span id="link-status" class="cyan">● CONECTADO</span></div></div></section>
+        <div class="controls"><span><kbd>W A S D</kbd> MOVER</span><span><kbd>ESPACIO</kbd> IMPULSO <i id="dash-ready"></i></span><span><kbd>ESC</kbd> PAUSA</span></div>
+        <div class="build-mark">EXPERIMENTO 001<span>WEBGL · PROCEDURAL 3D</span></div>
+      </footer>
+    </main>
+    <div id="damage-flash"></div>
+    <details id="audio-controls" class="audio-controls">
+      <summary>AUDIO</summary>
+      <div class="audio-panel">
+        <button id="audio-mute" type="button" aria-pressed="false">SILENCIAR</button>
+        <label for="music-volume">MÚSICA <output id="music-value">35%</output></label>
+        <input id="music-volume" type="range" min="0" max="100" step="1" value="35" />
+        <label for="sfx-volume">EFECTOS <output id="sfx-value">70%</output></label>
+        <input id="sfx-volume" type="range" min="0" max="100" step="1" value="70" />
+        <small>Durante la run, abrir este panel pausa el juego.</small>
+      </div>
+    </details>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
