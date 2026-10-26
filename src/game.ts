@@ -11,11 +11,16 @@ import { Effects } from './effects';
 import { DAMAGE_FEEDBACK, movementInput } from './player';
 import { Simulation } from './simulation';
 import { UI } from './ui';
+import { UXFlow, gameplayInput, type Action } from './ux-flow';
+import { MenuView } from './menu-view';
+import { menuCamera } from './menu-camera';
+import { BOSS_SECTOR, sectorNumber } from './waves';
 import { World } from './world';
 import type { UpgradeId } from './upgrades';
 import { GameAudio } from './audio';
 import { BrowserAudio } from './audio-browser';
 import { AudioEvents } from './audio-events';
+import { MenuAudio } from './audio-menu';
 import { bindAudioControls, browserAudioStorage } from './audio-controls';
 /** Render/input coordinator. Gameplay is testable without a browser in Simulation. */
 export class Game {
@@ -32,6 +37,10 @@ export class Game {
     private sim = new Simulation();
     private keys = new Set<string>();
     private paused = false;
+    private ux: UXFlow;
+    private menus: MenuView;
+    private ambientTime = 0;
+    private idleUiScreen = '';
     private time = 0;
     private shake = 0;
     private burnParticleTimer = 0;
@@ -45,6 +54,7 @@ export class Game {
     private audioBackend = new BrowserAudio();
     private audio = new GameAudio(this.audioBackend, browserAudioStorage());
     private audioEvents = new AudioEvents(this.audio);
+    private menuAudio = new MenuAudio(this.audio);
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
         this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -72,17 +82,24 @@ export class Game {
         this.composer.addPass(new RenderPass(this.scene, this.camera));
         this.composer.addPass(new UnrealBloomPass(new T.Vector2(800, 600), .32, .55, 1.15));
         this.composer.addPass(new OutputPass());
-        this.ui = new UI(() => this.start(), id => this.chooseUpgrade(id));
-        const removeAudioControls = bindAudioControls(this.audio, () => this.pause(), () => this.keys.clear());
+        this.ui = new UI(id => this.chooseUpgrade(id));
+        this.ux = new UXFlow({ reset: () => this.resetRun(), begin: () => this.beginRun(), pause: value => {
+            this.paused = value; this.menuAudio.pause(value, this.ux.screen); this.keys.clear();
+        } });
+        this.menus = new MenuView(action => this.menuAction(action));
+        const removeAudioControls = bindAudioControls(this.audio, () => this.keys.clear());
+        document.querySelector('#reload-game')!.addEventListener('click', () => location.reload());
         window.addEventListener('pagehide', event => {
-            this.audio.setPaused(true);
-            if (!event.persisted) { removeAudioControls(); this.audio.dispose(); }
+            this.ux.pause(); this.keys.clear(); this.audio.setPaused(true);
+            if (!event.persisted) { removeAudioControls(); this.menus.dispose(); this.audio.dispose(); }
         });
         this.resize();
         this.bindInput();
         this.camera.position.set(10, 24, 19);
         this.camera.lookAt(this.lookAt);
-        this.ui.update(this.sim, false, 0);
+        this.ui.update(this.sim, true, 0);
+        this.menus.render(this.ux);
+        this.menuAudio.update(this.ux);
         if (new URLSearchParams(location.search).has('debug')) {
             this.diagnostic = document.createElement('output');
             this.diagnostic.id = 'diagnostics';
@@ -98,42 +115,35 @@ export class Game {
                 this.update(1 / 60);
                 accumulator -= 1 / 60;
             }
-            this.render(dt);
+            if (!document.hidden) this.render(dt);
             this.frames++;
         };
         requestAnimationFrame(loop);
     }
-    private start(): void {
-        document.querySelector<HTMLDetailsElement>('#audio-controls')!.open = false;
-        if (this.paused) {
-            this.paused = false;
-            this.audio.setPaused(false);
-            this.audio.unlock();
-            this.audio.play('ui');
-            this.keys.clear();
-            (document.activeElement as HTMLElement)?.blur();
-            return;
-        }
-        if (['dead', 'complete'].includes(this.sim.progression.phase)) {
-            this.audioEvents.reset();
-            this.sim = new Simulation();
-            this.actors.reset();
-            this.effects.clear(); this.statusEffects.clear(); this.burnVisuals.clear();
-            this.shake = 0;
-            this.burnParticleTimer = 0;
-            this.hitLight.intensity = 0;
-            this.lookAt.set(0, 0, -.7);
-        }
+    private menuAction(action: Action): void {
+        this.audio.unlock();
+        this.ux.action(action);
+        this.keys.clear();
+        if (this.ux.screen === 'playing') this.audio.play('ui');
+        this.menus.render(this.ux);
+    }
+    private resetRun(): void {
+        this.audioEvents.reset();
+        this.sim = new Simulation();
+        this.actors.reset(); this.effects.clear(); this.statusEffects.clear(); this.burnVisuals.clear();
+        this.shake = 0; this.burnParticleTimer = 0; this.hitLight.intensity = 0;
+        this.lookAt.set(0, 0, -.7); this.keys.clear(); this.ui.reset();
+        this.world.update(0, this.time, this.sim.gates, this.sim.player.x);
+        this.actors.update(this.sim, this.time, 0, this.camera);
+    }
+    private beginRun(): void {
         this.sim.start();
         this.audioEvents.update(this.sim, false);
-        this.audio.unlock();
         this.audio.play('ui');
-        this.keys.clear();
-        (document.activeElement as HTMLElement)?.blur();
-        this.ui.notice('SECCIÓN 1 · DETENTE PARA DISPARAR');
+        this.keys.clear(); this.ui.sector(0);
     }
     private chooseUpgrade(id: UpgradeId): void {
-        if (this.paused || !this.sim.selectUpgrade(id))
+        if (this.ux.screen !== 'playing' || !this.sim.selectUpgrade(id))
             return;
         this.audio.unlock();
         this.audioEvents.upgrade();
@@ -142,36 +152,40 @@ export class Game {
         this.ui.notice('MÓDULO INSTALADO · AVANZA POR LA COMPUERTA →');
     }
     private pause(): void {
-        if (['combat', 'cleared', 'travel', 'upgrade', 'ending'].includes(this.sim.progression.phase)) {
-            this.paused = true;
-            this.audio.setPaused(true);
-            this.keys.clear();
-        }
+        this.ux.pause(); this.keys.clear(); this.menus.render(this.ux);
+        if (this.ux.ambient) this.audio.setPaused(true);
     }
     private bindInput(): void {
+        // A click anywhere in the menu or keyboard navigation is a valid first audio gesture.
+        const unlockMenu = (event: Event) => {
+            if (event instanceof KeyboardEvent && event.repeat) return;
+            if (this.ux.ambient && this.ux.screen !== 'transition') this.audio.unlock();
+        };
+        window.addEventListener('pointerdown', unlockMenu, { capture: true });
+        window.addEventListener('keydown', unlockMenu, { capture: true });
+        window.addEventListener('focus', () => {
+            if (this.ux.ambient && this.ux.screen !== 'transition') this.audio.setPaused(false);
+        });
         window.addEventListener('resize', () => this.resize());
         window.addEventListener('keydown', e => {
-            if (e.code.startsWith('Arrow'))
+            if (e.code === 'Escape') {
                 e.preventDefault();
-            if (e.code === 'Escape' && !e.repeat) {
-                if (this.paused)
-                    this.start();
-                else
-                    this.pause();
+                if (!e.repeat) {
+                    this.audio.unlock(); this.ux.escape(); this.keys.clear(); this.menus.render(this.ux);
+                }
                 return;
             }
-            if (e.code === 'Space' && document.activeElement?.tagName !== 'BUTTON') {
-                e.preventDefault();
-                if (!e.repeat && !this.paused)
-                    this.sim.dash();
-            }
+            if (!gameplayInput(this.ux.screen, this.sim.progression.phase)) return;
+            if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+            if (e.code === 'Space' && !e.repeat) this.sim.dash();
             this.keys.add(e.code);
         });
         window.addEventListener('keyup', e => this.keys.delete(e.code));
         window.addEventListener('blur', () => this.pause());
-        document.addEventListener('visibilitychange', () => { if (document.hidden)
-            this.pause(); });
-        this.renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); this.pause(); this.ui.contextLost(); });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) this.pause(); });
+        this.renderer.domElement.addEventListener('webglcontextlost', e => {
+            e.preventDefault(); this.ux.fail(); this.audio.reset(); this.keys.clear(); this.menus.render(this.ux);
+        });
     }
     private resize(): void {
         const w = innerWidth, h = innerHeight;
@@ -182,10 +196,27 @@ export class Game {
         this.camera.updateProjectionMatrix();
     }
     private update(dt: number): void {
-        if (this.paused) {
-            this.ui.update(this.sim, true, 0);
+        if (document.hidden) return;
+        this.ux.update(dt);
+        this.menuAudio.update(this.ux);
+        this.menus.render(this.ux);
+        if (this.ux.screen !== 'playing') {
+            if (this.ux.ambient) {
+                this.ambientTime += dt;
+                this.world.update(dt * .3, this.ambientTime, this.sim.gates, 0);
+                this.actors.update(this.sim, this.ambientTime, dt, this.camera);
+                this.actors.player.halo.visible = false;
+            } else if (this.ux.screen === 'gameover' || this.ux.screen === 'victory') {
+                // Finish existing destruction particles; no simulation/AI/timer steps behind end screens.
+                this.effects.update(dt);
+                this.hitLight.intensity *= Math.exp(-dt * 24);
+            }
+            if (this.idleUiScreen !== this.ux.screen) {
+                this.ui.update(this.sim, true, 0); this.idleUiScreen = this.ux.screen;
+            }
             return;
         }
+        this.idleUiScreen = '';
         this.time += dt;
         this.shake = Math.max(0, this.shake - dt * .8);
         this.hitLight.intensity *= Math.exp(-dt * 24);
@@ -194,8 +225,10 @@ export class Game {
         const previousWave = this.sim.progression.wave;
         this.sim.update(dt, movementInput(ix, iz));
         this.audioEvents.update(this.sim, false);
-        if (previousWave !== this.sim.progression.wave)
-            this.ui.notice(`SECCIÓN ${this.sim.progression.wave + 1} · COMBATE ACTIVO`);
+        if (previousWave !== this.sim.progression.wave) {
+            this.ui.sector(this.sim.progression.wave);
+            if (this.sim.progression.wave !== BOSS_SECTOR) this.ui.notice(`SECTOR//${sectorNumber(this.sim.progression.wave)} · COMBATE ACTIVO`);
+        }
         const living = [...this.sim.enemies, ...(this.sim.boss ? [this.sim.boss] : [])].filter(t => t.hp > 0);
         this.burnVisuals.update(dt, this.sim.burns, new Set(this.sim.player.hp > 0 ? living.map(t => t.id) : []));
         const visibleHeat = new Set(this.sim.targets.filter(t => t.hp > 0 && this.burnVisuals.strength(t.id) > 0).map(t => t.id));
@@ -303,26 +336,33 @@ export class Game {
         this.effects.update(dt);
         this.world.update(dt, this.time, this.sim.gates, this.sim.player.x);
         this.ui.update(this.sim, false, dt);
+        this.ux.sync(this.sim.progression.phase); this.menus.render(this.ux);
     }
     private render(dt: number): void {
         const p = this.sim.player;
-        // Keep the original viewing angle; follow longitudinal travel continuously.
-        this.lookAt.lerp(new T.Vector3(p.x, 0, p.z * .3 - .9), 1 - Math.exp(-dt * 3));
-        const shake = this.paused ? 0 : Math.max(this.shake, p.damageStrength * p.damageShake / DAMAGE_FEEDBACK.shake);
-        this.camera.position.set(this.lookAt.x + 10 + (Math.random() - .5) * shake, 24 + (Math.random() - .5) * shake, this.lookAt.z + 18);
-        this.camera.lookAt(this.lookAt);
+        if (this.ux.screen === 'error') return;
+        // Keep gameplay framing; the menu reuses the world through a separate camera pose.
+        if (this.ux.ambient) menuCamera(this.camera, this.ambientTime, this.camera.aspect);
+        else {
+            this.camera.fov = this.camera.aspect < 1.3 ? 54 : 42;
+            this.camera.updateProjectionMatrix();
+            this.lookAt.lerp(new T.Vector3(p.x, 0, p.z * .3 - .9), 1 - Math.exp(-dt * 3));
+            const shake = this.ux.screen !== 'playing' ? 0 : Math.max(this.shake, p.damageStrength * p.damageShake / DAMAGE_FEEDBACK.shake);
+            this.camera.position.set(this.lookAt.x + 10 + (Math.random() - .5) * shake, 24 + (Math.random() - .5) * shake, this.lookAt.z + 18);
+            this.camera.lookAt(this.lookAt);
+        }
         this.key.position.set(this.lookAt.x - 8, 18, 4);
         this.key.target.position.set(this.lookAt.x, 0, 0);
         this.rim.position.set(this.lookAt.x + 8, 9, -12);
         this.rim.target.position.set(this.lookAt.x, 0, 0);
-        this.ui.flash(p.damageScreen / DAMAGE_FEEDBACK.screen);
+        this.ui.flash(this.ux.screen === 'playing' ? p.damageScreen / DAMAGE_FEEDBACK.screen : 0);
         this.renderer.info.reset();
         this.composer.render();
         this.fps += (1 / Math.max(dt, .001) - this.fps) * .03;
         if (this.diagnostic && this.frames % 15 === 0) {
             const info = this.renderer.info, run = this.sim.progression;
             this.diagnostic.textContent = `${Math.round(this.fps)} FPS / ${info.render.calls} DRAW CALLS / ${Math.round(info.render.triangles / 1000)}K TRIS`;
-            this.diagnostic.dataset.state = JSON.stringify({ phase: run.phase, wave: run.wave + 1, paused: this.paused, hp: p.hp, stats: p.stats, kills: this.sim.kills, elapsed: this.sim.elapsed, player: { x: p.x, z: p.z, moving: p.moving }, enemies: this.sim.enemies, boss: this.sim.boss, bullets: this.sim.projectiles, thermal: this.sim.thermal, floorHazards: this.sim.floorHazards, gates: this.sim.gates, frames: this.frames, fps: Math.round(this.fps), geometries: info.memory.geometries, textures: info.memory.textures, residentRooms: [...this.world.rooms.keys()].map(i => i + 1), pendingSpawns: this.sim.pendingSpawns, upgrades: [...p.acquired], offeredUpgrades: this.sim.offeredUpgrades, reward: this.sim.reward, burns: [...this.sim.burns], frost: [...this.sim.frost], shockHits: this.sim.shockHits, overdriveCharge: p.overdriveCharge, shieldSpent: p.shieldSpent, reviveUsed: p.reviveUsed, feedback: { flash: p.damageFlash, screen: p.damageScreen, hud: p.damageHud, shake: p.damageShake }, audio: { ...this.audioBackend.diagnostics, settings: this.audio.settings } });
+            this.diagnostic.dataset.state = JSON.stringify({ screen: this.ux.screen, phase: run.phase, wave: run.wave + 1, paused: this.paused, hp: p.hp, stats: p.stats, kills: this.sim.kills, elapsed: this.sim.elapsed, player: { x: p.x, z: p.z, moving: p.moving }, enemies: this.sim.enemies, boss: this.sim.boss, bullets: this.sim.projectiles, thermal: this.sim.thermal, floorHazards: this.sim.floorHazards, gates: this.sim.gates, frames: this.frames, fps: Math.round(this.fps), geometries: info.memory.geometries, textures: info.memory.textures, residentRooms: [...this.world.rooms.keys()].map(i => i + 1), pendingSpawns: this.sim.pendingSpawns, upgrades: [...p.acquired], offeredUpgrades: this.sim.offeredUpgrades, reward: this.sim.reward, burns: [...this.sim.burns], frost: [...this.sim.frost], shockHits: this.sim.shockHits, overdriveCharge: p.overdriveCharge, shieldSpent: p.shieldSpent, reviveUsed: p.reviveUsed, feedback: { flash: p.damageFlash, screen: p.damageScreen, hud: p.damageHud, shake: p.damageShake }, audio: { ...this.audioBackend.diagnostics, settings: this.audio.settings } });
         }
     }
 }

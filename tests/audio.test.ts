@@ -213,9 +213,10 @@ test('Boss Charge warning sounds once per charge, including the second warning; 
     sim.boss.state = 'windup'; sim.boss.chargeIndex = 1; events.update(sim, false);
     assert.equal(backend.played.filter(v => v.id === 'bossCharge').length, 2);
 });
-test('audio manifest references only 18 compact SFX and two present music files', () => {
+test('audio manifest references only 18 compact SFX and three present music files', () => {
     const files = new Set(Object.values(SFX).map(spec => spec.file));
     assert.equal(files.size, 18);
+    assert.equal(Object.keys(MUSIC_FILES).length, 3);
     for (const file of files) {
         const path = new URL(`../public/audio/${file}`, import.meta.url);
         assert.equal(readFileSync(path).subarray(0, 4).toString(), 'OggS');
@@ -223,7 +224,7 @@ test('audio manifest references only 18 compact SFX and two present music files'
     }
     let bytes = 0;
     for (const file of [...files, ...Object.values(MUSIC_FILES)]) bytes += statSync(new URL(`../public/audio/${file}`, import.meta.url)).size;
-    assert.ok(bytes < 7_000_000);
+    assert.ok(bytes < 9_500_000);
 });
 
 function statusAudioFixture(count = 3) {

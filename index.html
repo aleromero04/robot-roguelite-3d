@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#080e15" />
-    <meta name="description" content="Protocol Zero — un experimento de combate robótico 3D." />
-    <title>PROTOCOL ZERO · Sector 01</title>
+    <meta name="description" content="CORE//07 — combate robótico. Siete sectores. Una unidad." />
+    <title>CORE//07 · System Breach Protocol</title>
   </head>
-  <body>
+  <body data-screen="menu">
     <canvas id="game" aria-label="Arena 3D de combate robótico"></canvas>
     <div class="vignette"></div>
     <main id="hud">
       <header>
-        <div class="brand"><span class="emblem">⏣</span><div><div class="eyebrow">AUTONOMOUS COMBAT SYSTEMS</div><h1>PROTOCOL <strong>ZERO</strong><span class="poc">POC / 01</span></h1></div></div>
-        <div class="sector"><span class="live-dot"></span> <span id="sector-name">SECTOR 01</span> <span class="separator">/</span> <span class="muted">FUNDICIÓN</span><small>37° 23′ N &nbsp; // &nbsp; ENLACE LOCAL</small></div>
+        <div class="brand"><span class="emblem">⏣</span><div><div class="eyebrow">SYSTEM BREACH PROTOCOL</div><h1><strong>CORE<span class="brand-slash">//</span>07</strong></h1></div></div>
+        <div class="sector"><span class="live-dot"></span> <span id="sector-name">SECTOR//01</span> <span class="separator">/</span> <span class="muted">FUNDICIÓN</span><small>37° 23′ N &nbsp; // &nbsp; ENLACE LOCAL</small></div>
       </header>
       <div class="side-label">RESTRICTED AREA &nbsp; / &nbsp; ROBOTICS DIVISION</div>
       <aside class="telemetry"><div class="eyebrow">TELEMETRÍA DE COMBATE</div><div class="stats"><div><b id="kills">00</b><span>NEUTRALIZADOS</span></div><div><b id="time">00:00</b><span>TIEMPO ACTIVO</span></div></div><div class="signal"><i></i><i></i><i></i><i></i><i></i><span id="status">SISTEMAS EN ESPERA</span></div></aside>
@@ -27,33 +27,79 @@
         <div id="upgrade-cards"></div>
         <small id="repair-preview"></small>
       </section>
-      <section id="overlay" class="briefing">
-        <div class="eyebrow"><span class="live-dot"></span> PROTOCOLO DE CONTENCIÓN</div>
-        <div class="briefing-index">01 /</div>
-        <h2 id="overlay-title">SIN SEÑAL.<br><em>SIN REFUERZOS.</em></h2>
-        <p id="overlay-copy">Asegura seis sectores y derrota al Boss del Sector 07. Muévete para esquivar; detente para disparar. Recoge el núcleo, instala un módulo y cruza cada compuerta.</p>
-        <div id="enemy-guide" class="enemy-guide"><span><i class="enemy-icon basic"></i>CENTINELA <small>CONTACTO</small></span><span><i class="enemy-icon runner"></i>CORREDOR <small>EMBESTIDA</small></span><span><i class="enemy-icon shooter"></i>DRON <small>DISTANCIA</small></span></div>
-        <button id="start">INICIAR INCURSIÓN <span>↗</span></button>
-        <small id="overlay-hint">WASD / FLECHAS · DISPARO SOLO AL DETENERTE</small>
-      </section>
       <footer>
         <section class="vitals"><div class="unit-mark">Z<span>01</span></div><div class="vitals-main"><div class="vitals-title">UNIDAD Z–01 <span id="hp-value">80 <small>/ 80</small></span></div><div class="health-track"><div id="hp-bar"></div></div><div id="defense-status"></div><div class="vitals-bottom"><span id="hp-status">INTEGRIDAD ESTRUCTURAL</span><span id="link-status" class="cyan">● CONECTADO</span></div></div></section>
         <div class="controls"><span><kbd>W A S D</kbd> MOVER</span><span><kbd>ESPACIO</kbd> IMPULSO <i id="dash-ready"></i></span><span><kbd>ESC</kbd> PAUSA</span></div>
-        <div class="build-mark">EXPERIMENTO 001<span>WEBGL · PROCEDURAL 3D</span></div>
+        <div class="build-mark">CORE//07<span>v0.1</span></div>
       </footer>
     </main>
     <div id="damage-flash"></div>
-    <details id="audio-controls" class="audio-controls">
-      <summary>AUDIO</summary>
-      <div class="audio-panel">
-        <button id="audio-mute" type="button" aria-pressed="false">SILENCIAR</button>
-        <label for="music-volume">MÚSICA <output id="music-value">35%</output></label>
-        <input id="music-volume" type="range" min="0" max="100" step="1" value="35" />
-        <label for="sfx-volume">EFECTOS <output id="sfx-value">70%</output></label>
-        <input id="sfx-volume" type="range" min="0" max="100" step="1" value="70" />
-        <small>Durante la run, abrir este panel pausa el juego.</small>
-      </div>
-    </details>
+    <div id="sector-intro" aria-live="polite"><strong></strong><span></span></div>
+    <div id="ux" data-screen="menu" data-ambient="true">
+      <div class="ux-meta"><span class="system-dot"></span> <span id="system-status">SYSTEM ONLINE</span><span>SEVEN SECTORS / ONE UNIT</span></div>
+      <section class="ux-panel main-menu" data-panel="menu" aria-labelledby="menu-title">
+        <p class="ux-kicker">AUTONOMOUS COMBAT SYSTEMS</p>
+        <h2 id="menu-title" class="core-logo">CORE<span>//</span>07</h2>
+        <p class="ux-subtitle">SYSTEM BREACH PROTOCOL</p>
+        <div class="menu-rule"></div>
+        <nav class="ux-actions" aria-label="Menú principal">
+          <button class="ux-primary" data-action="play">JUGAR <span aria-hidden="true">↗</span></button>
+          <button data-action="how">CÓMO JUGAR <span aria-hidden="true">+</span></button>
+          <button data-action="settings">AJUSTES <span aria-hidden="true">+</span></button>
+        </nav>
+        <p class="ux-version">v0.1 <span>CORE SYSTEMS // READY</span></p>
+      </section>
+      <section class="ux-panel" data-panel="how" role="dialog" aria-modal="true" aria-labelledby="how-title" hidden>
+        <p class="ux-kicker">SYSTEM//GUIDE</p><h2 id="how-title">CÓMO JUGAR</h2>
+        <div class="attack-rule"><strong>DETENTE PARA ATACAR</strong><p>En movimiento, tu arma espera.<br>Al detenerte, apuntas y disparas automáticamente.</p></div>
+        <dl class="how-grid">
+          <div><dt><kbd>W A S D</kbd> / <kbd>↑ ← ↓ →</kbd></dt><dd>Muévete y esquiva.</dd></div>
+          <div><dt><kbd>ESPACIO</kbd></dt><dd>Dash en tu última dirección de movimiento.</dd></div>
+          <div><dt>MEJORA TU UNIDAD</dt><dd>Despeja el sector, recoge el núcleo y elige un módulo.</dd></div>
+          <div><dt>ALCANZA SECTOR//07</dt><dd>Cruza las compuertas y derrota al Boss final.</dd></div>
+        </dl>
+        <button data-action="back">VOLVER <span aria-hidden="true">←</span></button>
+      </section>
+      <section class="ux-panel" data-panel="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+        <p class="ux-kicker">SYSTEM//AUDIO</p><h2 id="settings-title">AJUSTES</h2>
+        <div id="audio-controls" class="settings-audio">
+          <label for="music-volume">MÚSICA <output id="music-value">35%</output></label>
+          <input id="music-volume" type="range" min="0" max="100" step="1" value="35" />
+          <label for="sfx-volume">SFX <output id="sfx-value">70%</output></label>
+          <input id="sfx-volume" type="range" min="0" max="100" step="1" value="70" />
+          <button id="audio-mute" type="button" aria-pressed="false">SILENCIAR</button>
+          <p>Los ajustes se guardan automáticamente.<br>El audio de la run se reanuda al continuar.</p>
+        </div>
+        <button data-action="back">VOLVER <span aria-hidden="true">←</span></button>
+      </section>
+      <section class="ux-panel" data-panel="pause" role="dialog" aria-modal="true" aria-labelledby="pause-title" hidden>
+        <p class="ux-kicker">CORE//07 · ENLACE SUSPENDIDO</p><h2 id="pause-title"><span class="brand-slash">//</span> PAUSA</h2>
+        <p class="ux-copy">La instalación puede esperar.</p>
+        <div class="ux-actions">
+          <button class="ux-primary" data-action="continue">CONTINUAR <span aria-hidden="true">↗</span></button>
+          <button data-action="settings">AJUSTES <span aria-hidden="true">+</span></button>
+          <button data-action="restart">REINICIAR RUN <span aria-hidden="true">↻</span></button>
+          <button data-action="menu">MENÚ PRINCIPAL <span aria-hidden="true">←</span></button>
+        </div><p class="ux-hint">ESC PARA CONTINUAR</p>
+      </section>
+      <section class="ux-panel" data-panel="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-copy" hidden>
+        <p class="ux-kicker">SYSTEM//CONFIRM</p><h2 id="confirm-title">REINICIAR RUN</h2><p id="confirm-copy" class="ux-copy"></p>
+        <div class="ux-actions"><button id="confirm-accept" class="ux-danger" data-action="accept">REINICIAR</button><button data-action="cancel">CANCELAR <span aria-hidden="true">←</span></button></div>
+      </section>
+      <section class="ux-panel end-screen" data-panel="gameover" role="dialog" aria-modal="true" aria-labelledby="death-title" hidden>
+        <p class="ux-kicker">CONNECTION LOST</p><h2 id="death-title" class="end-title">RUN<br>TERMINATED<span>.</span></h2>
+        <p class="end-brand">CORE//07</p><p class="ux-copy">La señal se ha perdido. Vuelve a intentarlo.</p>
+        <div class="ux-actions"><button class="ux-primary" data-action="play">REINTENTAR <span aria-hidden="true">↻</span></button><button data-action="menu">MENÚ PRINCIPAL <span aria-hidden="true">←</span></button></div>
+      </section>
+      <section class="ux-panel end-screen" data-panel="victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" hidden>
+        <p class="ux-kicker">SECTOR 07 CLEARED</p><h2 id="victory-title" class="end-title">PROTOCOL<br>COMPLETE<span>.</span></h2>
+        <p class="end-brand">CORE//07</p><p class="ux-copy">Siete sectores asegurados. Unidad extraída.</p>
+        <div class="ux-actions"><button class="ux-primary" data-action="play">NUEVA RUN <span aria-hidden="true">↻</span></button><button data-action="menu">MENÚ PRINCIPAL <span aria-hidden="true">←</span></button></div>
+      </section>
+      <section class="ux-panel" data-panel="error" role="alert" hidden><p class="ux-kicker">SYSTEM//OFFLINE</p><h2 id="error-title">GRÁFICOS DESCONECTADOS</h2><p id="error-copy" class="ux-copy">Recarga la página para restaurar WebGL.</p><button id="reload-game">RECARGAR</button></section>
+      <span class="ux-corner" aria-hidden="true">07 / CONTAINMENT FACILITY</span>
+    </div>
+    <div id="transition-veil" aria-hidden="true"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

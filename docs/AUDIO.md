@@ -1,4 +1,4 @@
-# Audio v1 + segunda pasada · 21/10/2026
+# Audio v1 + Airy en menú · 23/10/2026
 
 Primera integración de música y SFX. No cambia Simulation, balance, enemigos, upgrades, layouts ni progresión. Sin dependencias nuevas, commit ni push. Los originales de Downloads permanecen intactos.
 
@@ -7,10 +7,11 @@ Primera integración de música y SFX. No cambia Simulation, balance, enemigos, 
 - `src/audio.ts`: configuración, mezcla, persistencia, cooldowns y presupuesto de voces; independiente del navegador y testeable mediante un backend falso.
 - `src/audio-browser.ts`: un AudioContext, buses MUSIC/SFX, master con mute y compresor suave, **un único HTMLAudioElement** para música en streaming y 18 AudioBuffer compartidos para SFX. Cada efecto crea un BufferSource y un Gain de corta vida; ambos se desconectan al terminar o cancelar.
 - `src/audio-events.ts`: adaptador de solo lectura de los eventos existentes de Simulation. Detecta los cambios de estado del Boss para los avisos de Charge, incluida la segunda carga. No añade eventos ni modifica la simulación.
-- `src/audio-controls.ts`: conecta el panel AUDIO con el mezclador y localStorage; captura teclado del panel para que flechas/espacio no muevan al Player ni activen dash.
+- `src/audio-menu.ts`: selección de Airy en menú/ayuda/ajustes del menú y fade de salida durante transiciones; no modifica navegación ni Simulation.
+- `src/audio-controls.ts`: conecta el único panel Ajustes con el mezclador y localStorage; captura flechas/espacio y deja Escape/Tab a la navegación UX.
 - `src/game.ts`: integra el adaptador antes de consumir/limpiar los eventos visuales; conecta Start, upgrade, pausa, reinicio y salida de página. El diagnóstico `?debug=1` muestra pista, playhead, buffers, voces, fallos y ajustes.
 
-No hay reproducción ni AudioContext antes de una interacción. Start/Reanudar y los controles llaman a unlock desde el gesto real. Los 18 SFX se descargan/decodifican una vez por instancia tras ese gesto. Los efectos aún no cargados se descartan: nunca quedan en una cola que suene tarde. Un bloqueo de autoplay se captura y puede reintentarse con el siguiente gesto. Los fallos no detienen el juego y se avisan una sola vez por recurso.
+No hay reproducción ni AudioContext antes de una interacción. El primer pointerdown o keydown no repetido del menú, Start/Reanudar y los controles llaman a unlock desde el gesto real. Los 18 SFX se descargan/decodifican una vez por instancia tras ese gesto. Los efectos aún no cargados se descartan: nunca quedan en una cola que suene tarde. Un bloqueo de autoplay (`NotAllowedError`, incluido resume del contexto) se captura sin warning/error ni reintento desde el bucle; solo se reintenta con el siguiente gesto válido. Los fallos no detienen el juego y se avisan una sola vez por recurso.
 
 Máximo **12 voces SFX**, más la música; límites adicionales de 1–3 por efecto y cooldowns por evento. Los avisos importantes pueden sustituir una voz de menor prioridad. Una corona Radial emite un único sonido, no uno por bala. Los impactos múltiples se agrupan mediante cooldown de 55 ms; las muertes sustituyen su impacto del mismo paso. No se sonorizan los ticks de Burn ni los impactos de un Burrower oculto.
 
@@ -20,7 +21,8 @@ Los sonidos repetidos tienen variación de playback rate de ±1–2,5%, con una 
 
 | Estado | Música y efectos |
 | --- | --- |
-| Ready | Silencio. Abrir controles desbloquea el motor, pero no inicia una pista. |
+| Menú / ayuda / ajustes desde menú | Airy en loop, tras el primer gesto válido. Sin simulación de combate. Al perder foco se pausa; al recuperarlo continúa si ya estaba desbloqueado. |
+| Jugar | Fade-out de Airy de 120 ms, retirada a los 125 ms; Brute Force comienza con fade-in de 150 ms al terminar la transición UX existente de 360 ms. |
 | Start / S01–06 | Brute Force en loop. Cambiar de sector no cambia el src ni reinicia su playhead. |
 | Cleared / viaje | Continúa la pista. Se oyen peligros residuales que aún existen y la transición de puerta. |
 | Core / cartas | Cue de recogida; se limpian voces de combate y se ignoran eventos residuales. Música al 65% de su mezcla normal, sin reiniciarse. |
@@ -30,18 +32,21 @@ Los sonidos repetidos tienen variación de playback rate de ±1–2,5%, con una 
 | Pause / blur / pestaña oculta | Música pausada conservando posición; SFX activos cancelados. Reanudar continúa la pista sin crear otro reproductor. |
 | Game Over | Música detenida y descargada del elemento; se cancelan efectos anteriores y suena una sola destrucción de robot; muerte y pantalla comparten el mismo estado. |
 | Boss death / ending / Victory | Música detenida; cue de destrucción. Al confirmarse Victory suena una confirmación breve, sin recortar la cola de destrucción ni añadir combate residual. |
+| Volver al menú | La pista de gameplay/Boss ya está pausada; se retira sin reanudarla. Airy entra con fade-in de 150 ms solo cuando termina la transición al menú. |
 | Restart | Cancela voces/fades/cooldowns previos y vuelve a Brute Force desde el principio; reutiliza buffers y contexto. Conserva preferencias. |
 | Salir de página | Abort de cargas pendientes, limpieza de fuentes y cierre de contexto. Si se conserva en bfcache, queda pausado. |
 
-No existe un flujo independiente de volver al menú en esta versión; se mantienen los botones originales Start/Reanudar/Restart.
+UX v1 añade vuelta al menú con confirmación desde pausa y acceso directo desde los finales. Resetea el adaptador de eventos, cancela voces/cooldowns/fades y retira la pista; los buffers y preferencias se reutilizan.
 
 ## Controles y mezcla
 
-Panel **AUDIO**, esquina inferior izquierda, por encima de la vida. Incluye mute, Música y Efectos. Al abrirlo durante la run, se pausa la simulación y el audio. Cerrar el panel no reanuda accidentalmente: utiliza Reanudar o Escape una vez fuera del panel. Dentro del panel, Escape lo cierra primero.
+**Ubicación actual tras UX v1:** panel **AJUSTES**, compartido por el menú principal y el menú de pausa. Incluye mute, Música y SFX. Desde gameplay se accede con Escape → Ajustes. Volver/Escape retorna a pausa sin reanudar; Continuar/Escape desde pausa reanuda. Desde el menú principal vuelve al menú y Airy continúa sin reiniciarse. La antigua pestaña flotante AUDIO se ha retirado. Se mantienen GameAudio, BrowserAudio, presets y almacenamiento.
 
 Valores iniciales: **Music 35%, SFX 70%, muted false**. Persistencia en `protocol-zero.audio.v1`. Valores corruptos, no finitos o fuera de rango se validan; localStorage bloqueado/lleno no rompe el juego. Mute conserva ambos sliders. Durante pausa no se reproduce una preescucha; para juzgar la mezcla hay que reanudar.
 
 Se midieron duración, canales, pico y RMS de PCM temporal decodificado con `afconvert`. Ningún SFX elegido presenta muestras saturadas en esa inspección. No son medidas LUFS ni una evaluación auditiva humana.
+
+El ajuste final elegido por el usuario el 26/10/2026 es un trim de Airy de **0,32**, el **100% de la ganancia relativa de Brute Force**. A Music 35% ambas pistas tienen una ganancia de **0,112**. Sustituye al 65% inicial; no equivale a una medida de loudness percibido y no se ha normalizado ni editado el MP3.
 
 Brute Force mide aproximadamente −12,9 dBFS RMS y Fast Fight −9,1 dBFS RMS. Por ello se aplican trims internos **0,32 / 0,23**, además del slider de música. A 35%, sus niveles medios estimados son aproximadamente −31,9 / −31,0 dBFS antes del master. Los SFX importantes sobresalen; el disparo no usa el nivel máximo. Un compresor común suave limita acumulaciones; no sustituye los límites de voces.
 
@@ -55,8 +60,11 @@ Las URLs se recuperaron de los metadatos de descarga `kMDItemWhereFroms`; autor�
 
 | Archivo del proyecto | Recurso / fuente | Licencia | Formato / duración / tamaño |
 | --- | --- | --- | --- |
+| `public/audio/music/airy.mp3` | **Airy — Dark Sci-Fi Audio Pack**, [SRG774 / OpenGameArt](https://opengameart.org/content/dark-sci-fi-audio-pack). Uso: **Main Menu ambient music**. | CC0 1.0 Universal | MP3, 44,1 kHz estéreo, 320 kbps, ~64 s; **2.559.999 bytes**. Copia idéntica de Downloads. |
 | `public/audio/music/brute_force_loop.mp3` | [Brute Force — Vitalezzz](https://opengameart.org/content/brute-force) | CC0 | MP3, 44,1 kHz estéreo, 320 kbps, 148,402 s; 5.936.135 bytes. Copia idéntica. |
 | `public/audio/music/fight_looped.m4a` | [Fast fight / battle music (looped)](https://opengameart.org/content/fast-fight-battle-music-looped), loop publicado por XCVG del tema de Ville Nousiainen | CC0 | AAC/M4A, 44,1 kHz estéreo, objetivo 192 kbps, 24,765 s; 592.013 bytes. |
+
+Airy: `com.apple.metadata:kMDItemWhereFroms` del archivo local contiene `https://opengameart.org/sites/default/files/airy_0.mp3` y la página del pack. La página confirma SRG774 como autor y CC0; verificación del 23/10/2026. Solo se copia `airy.mp3`; el original permanece intacto, sin conversión ni otros archivos del pack.
 
 **Diferencia respecto al encargo:** la descarga real del Boss es `fight_looped.wav` (4.368.690 bytes), no un MP3. Se creó una copia AAC/M4A usando el conversor incluido en macOS, sin instalar dependencias, recortar ni cambiar tempo. El contenedor conserva 1.092.136 frames válidos y la información de priming. Se evita incorporar el WAV grande y se conserva la versión loop elegida. Comando usado:
 
@@ -121,7 +129,7 @@ El gain individual se multiplica por el slider SFX; no es un porcentaje de loudn
 
 **Descartes relevantes:** `computerNoise_*`, `engine*`, `spaceEngine*` y `thrusterFire_*` duran 5 s y añadirían demasiadas colas para efectos repetidos. Las explosiones Crunch 001–004 duran 1,26–1,98 s: se eligió la 000 de 0,777 s para muertes frecuentes. `click_001` resultó demasiado débil (pico −38,8/RMS −52,6 dBFS); se sustituyó por `select_003`. `impactMetal_heavy_001` de Impact tenía RMS −33,0 dBFS y un ataque muy breve para señalar daño importante; se eligió `impactMetal_004` de Sci-Fi, RMS −21,2. Los láseres Retro se descartaron en favor de Small/Large para mantener una familia sonora más homogénea. No se incorporan archivos descartados.
 
-**Tamaño:** 18 SFX = **304.147 bytes**. Dos músicas + SFX = **6.832.295 bytes**, aproximadamente **6,83 MB / 6,52 MiB**. Los SFX decodificados ocupan aproximadamente 2,36 MB de PCM Float32 a 44,1 kHz, algo más si el dispositivo trabaja a 48 kHz. Las músicas se reproducen en streaming y no se decodifican completas a buffers del juego.
+**Tamaño:** 18 SFX = **304.147 bytes**. Tres músicas + SFX = **9.392.294 bytes**, aproximadamente **9,39 MB / 8,96 MiB**. Los SFX decodificados ocupan aproximadamente 2,36 MB de PCM Float32 a 44,1 kHz, algo más si el dispositivo trabaja a 48 kHz. Las músicas se reproducen en streaming y no se decodifican completas a buffers del juego.
 
 ## Verificación y límites
 
@@ -140,7 +148,7 @@ Checklist breve:
 1. Start: música normal y disparo/impacto/daño/dash con niveles cómodos; escucha varias ráfagas Rapid.
 2. Core/cartas y S01–06: continuidad de música; recogida, selección y puerta claras.
 3. S07/P2: cambio de pista sin dos músicas; avisos de carga, coronas/Split y Phase 2 distinguibles.
-4. AUDIO: mute, sliders, recarga con valores persistidos y flechas sin mover al Player. Reanuda para oír la mezcla.
+4. AJUSTES: mute, sliders, recarga con valores persistidos y flechas sin mover al Player. Continúa la run para oír la mezcla.
 5. Pausa/otra pestaña: silencio; Reanudar continúa desde la misma posición.
 6. Game Over/Victory y Restart: final coherente; nueva música normal desde el principio sin voces antiguas.
 
@@ -175,3 +183,22 @@ Checklist de esta pasada:
 3. Aplicar/renovar Flame: ignición breve; esperar los ticks sin nuevos sonidos y probar varios impactos próximos.
 4. Morir: destrucción una sola vez; esperar en Game Over y reiniciar para comprobar que vuelve a funcionar.
 5. Derrotar al Boss: conservar su explosión y escuchar la confirmación al llegar a Victory; reiniciar sin colas antiguas.
+
+## Integración original con UX v1 · 22/10/2026
+
+Nota: el menú silencioso descrito en este cierre histórico se sustituye por Airy en la integración del 23/10/2026, detallada arriba.
+
+Se conserva el motor Audio v1 y todos los archivos, mezcla, prioridades y conexiones de combate. Solo cambia la vinculación de controles con el panel compartido. El gesto Jugar desbloquea Web Audio; la pista normal comienza al terminar la transición. Pausa detiene música conservando playhead y cancela SFX activos. Ajustes aplica ganancias y guarda valores de inmediato, pero no inventa una preescucha durante pausa o menú silencioso. Continuar recupera la pista existente. Reiniciar/Menu limpia el estado de audio anterior, sin crear otro contexto ni reproductor.
+
+Game Over y Victory mantienen sus SFX únicos; la UI se abre después de procesar el evento/fase correspondiente y no corta esas colas. Los tests de UX usan el mismo GameAudio/AudioEvents. Véase [UX.md](UX.md) para el cierre de verificación y el flujo completo.
+
+
+## Verificación de Airy · 23/10/2026
+
+Baseline previo: **227/227**. Se añaden seis tests del backend/política de menú y se ajustan dos existentes (autoplay silencioso y manifiesto de tres músicas). Cubren Airy tras gesto, continuidad en subpaneles, Play/Brute Force, Boss/Fast Fight, retorno al menú, ausencia de Airy durante Restart/Retry y finales, un solo reproductor, ganancias/mute compartidos y rechazo de autoplay/resume sin bucles ni warnings. También se prueba la cancelación de fades y gestos durante la salida del menú.
+
+Resultado final: **233/233 tests**, TypeScript estricto, build de producción y `git diff --check` correctos. Untracked revisados: cambios previos de UX conservados, un módulo de integración de audio y únicamente el MP3 elegido; sin montajes temporales. La copia original, el recurso del proyecto y el del build coinciden byte a byte. SHA-256 de Airy: `2880297bb0bace79448ea47732aa7db78ea526663ce2791d733e353b6f8adf87`.
+
+Chrome: contexto inicialmente bloqueado sin reproductor; primer clic reproduce Airy en loop; Music 0 produce ganancia 0 y Mute produce master 0. Brute Force y Fast Fight seleccionados con sus archivos existentes; a Music 50% sus ganancias son 0,16 / 0,115 y ambos obedecen Mute. Restart no solicita Airy y el retorno confirmado desde Boss sí lo hace, después de la transición. Preferencias restauradas a Music 35%, SFX 70%, sin mute. Consola del escenario controlado sin warnings/errores. El montaje temporal para forzar Boss se retira antes del cierre.
+
+La comprobación del navegador verifica reproducción, playhead, selección de pista y ganancias reales del grafo Web Audio; no sustituye una escucha humana de la mezcla ni garantiza un loop MP3 sample-perfect. La reproducción sigue usando un único elemento en loop, sin añadir crossfade de fin/inicio ni dependencias. No cambia gameplay, balance, estética o flujo UX.

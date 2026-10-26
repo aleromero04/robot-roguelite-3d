@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserAudio } from '../src/audio-browser.ts';
-import { DEFAULT_AUDIO, MUSIC_TRIM } from '../src/audio.ts';
+import { DEFAULT_AUDIO, MUSIC_TRIM, GameAudio } from '../src/audio.ts';
+import { MenuAudio } from '../src/audio-menu.ts';
+import { AudioEvents } from '../src/audio-events.ts';
+import { UXFlow, TRANSITION_HALF } from '../src/ux-flow.ts';
+import { Simulation } from '../src/simulation.ts';
+import { createBoss } from '../src/boss.ts';
+import { BOSS_SECTOR } from '../src/waves.ts';
 
 function browserFixture(t: Parameters<Parameters<typeof test>[1]>[0]) {
     const saved = new Map<string, PropertyDescriptor | undefined>();
@@ -135,9 +141,112 @@ test('failed assets are bounded and missing audio cannot crash gameplay', async 
 });
 test('autoplay rejection is caught and a subsequent gesture retries without allocating another player', async t => {
     const { backend, elements } = browserFixture(t);
-    t.mock.method(console, 'warn', () => {});
-    backend.unlock(); elements[0].reject = true; backend.music('normal', 1); await delay(0);
-    assert.ok(backend.diagnostics.failures.includes('autoplay'));
+    const warnings: unknown[] = []; t.mock.method(console, 'warn', (...args) => warnings.push(args));
+    backend.unlock(); elements[0].reject = true; backend.music('menu', 1); await delay(0);
+    for (let i = 0; i < 60; i++) backend.music('menu', 1);
+    backend.pause(true); backend.pause(false); await delay(0);
+    assert.equal(elements[0].plays, 1); assert.deepEqual(warnings, []);
+    assert.deepEqual(backend.diagnostics.failures, []);
     elements[0].reject = false; backend.unlock(); await delay(0);
     assert.equal(elements.length, 1); assert.equal(elements[0].plays, 2);
+});
+
+function menuFixture(t: Parameters<Parameters<typeof test>[1]>[0]) {
+    const browser = browserFixture(t), audio = new GameAudio(browser.backend);
+    const menu = new MenuAudio(audio), events = new AudioEvents(audio);
+    let sim = new Simulation(() => .4);
+    const flow = new UXFlow({
+        reset: () => { events.reset(); sim = new Simulation(() => .4); },
+        begin: () => { sim.start(); events.update(sim, false); },
+        pause: value => menu.pause(value, flow.screen),
+    });
+    const tick = (dt = TRANSITION_HALF) => { flow.update(dt); menu.update(flow); };
+    menu.update(flow);
+    return { ...browser, audio, menu, events, flow, tick, get sim() { return sim; } };
+}
+
+test('Airy waits for a gesture, loops through menu subpanels, then Play and Boss select the existing tracks', async t => {
+    const f = menuFixture(t);
+    for (let i = 0; i < 120; i++) f.tick();
+    assert.equal(f.backend.diagnostics.desired, 'menu'); assert.equal(f.contexts.length, 0);
+    f.audio.unlock(); const media = f.elements[0];
+    assert.ok(media.src.endsWith('/airy.mp3')); assert.equal(media.loop, true);
+    media.currentTime = 11;
+    for (const action of ['how', 'back', 'settings', 'back'] as const) { f.flow.action(action); f.tick(); }
+    assert.equal(media.currentTime, 11); assert.equal(media.plays, 1);
+    f.flow.action('play');
+    assert.equal(f.backend.diagnostics.desired, null); assert.equal(media.paused, false);
+    await delay(150); assert.equal(media.src, ''); assert.equal(media.paused, true);
+    f.tick(); assert.equal(media.src, ''); // Reset at black midpoint must not resurrect Airy.
+    f.tick(); assert.ok(media.src.endsWith('/brute_force_loop.mp3'));
+    f.sim.progression.wave = BOSS_SECTOR; f.sim.boss = createBoss(1, { x: 216, z: -5 });
+    f.events.update(f.sim, false); await delay(150);
+    assert.ok(media.src.endsWith('/fight_looped.m4a')); assert.equal(f.elements.length, 1);
+});
+
+test('Restart never inserts Airy; confirmed menu return starts it only after the transition', async t => {
+    const f = menuFixture(t); f.audio.unlock(); f.flow.action('play'); await delay(150); f.tick(.36);
+    const media = f.elements[0], airyPlays = () => media.history.filter(src => src.endsWith('/airy.mp3')).length;
+    f.flow.pause(); f.flow.action('restart'); f.flow.action('accept');
+    f.tick(); assert.equal(media.src, ''); f.tick();
+    assert.ok(media.src.endsWith('/brute_force_loop.mp3')); assert.equal(airyPlays(), 1);
+    f.sim.progression.wave = BOSS_SECTOR; f.sim.boss = createBoss(1, { x: 216, z: -5 });
+    f.events.update(f.sim, false); await delay(150);
+    f.flow.pause(); f.flow.action('menu'); f.flow.action('cancel');
+    assert.ok(media.src.endsWith('/fight_looped.m4a')); assert.equal(media.paused, true);
+    f.flow.action('menu'); f.flow.action('accept');
+    f.tick(); assert.equal(media.src, ''); assert.equal(airyPlays(), 1);
+    f.tick(); assert.ok(media.src.endsWith('/airy.mp3')); assert.equal(airyPlays(), 2);
+    assert.equal(media.paused, false); assert.equal(f.elements.length, 1);
+});
+
+test('Game Over and Victory stay silent until an actual return to menu; Retry skips Airy', async t => {
+    const f = menuFixture(t); f.audio.unlock(); f.flow.action('play'); await delay(150); f.tick(.36);
+    for (const phase of ['dead', 'complete'] as const) {
+        if (phase === 'complete') { f.sim.progression.phase = 'ending'; f.events.update(f.sim, false); }
+        f.sim.progression.phase = phase; f.events.update(f.sim, false); f.flow.sync(phase);
+        f.tick(10); assert.equal(f.backend.diagnostics.track, null);
+        f.flow.action('play'); f.tick(); assert.equal(f.backend.diagnostics.track, null);
+        f.tick(); assert.equal(f.backend.diagnostics.track, 'normal');
+        f.sim.progression.phase = phase; f.events.update(f.sim, false); f.flow.sync(phase);
+        f.flow.action('menu'); f.tick(); assert.equal(f.backend.diagnostics.track, null);
+        f.tick(); assert.equal(f.backend.diagnostics.track, 'menu');
+        f.flow.action('play'); await delay(150); f.tick(.36);
+    }
+});
+
+test('all three tracks share Music Volume and mute; Airy trim equals Brute Force', async t => {
+    const { backend, contexts, elements } = browserFixture(t);
+    backend.music('menu', 1); backend.unlock();
+    assert.equal(MUSIC_TRIM.menu, MUSIC_TRIM.normal);
+    const [master, music, sfx] = contexts[0].gains;
+    for (const track of ['menu', 'normal', 'boss'] as const) {
+        backend.music(track, 1); await delay(150);
+        backend.mix({ musicVolume: .5, sfxVolume: .7, muted: false });
+        assert.equal(music.gain.value, .5 * MUSIC_TRIM[track]); assert.equal(master.gain.value, 1);
+        backend.mix({ musicVolume: .5, sfxVolume: .7, muted: true }); assert.equal(master.gain.value, 0);
+        backend.mix({ musicVolume: 0, sfxVolume: .7, muted: false }); assert.equal(music.gain.value, 0);
+        assert.equal(sfx.gain.value, .7); assert.equal(elements.length, 1);
+    }
+});
+
+test('gestures during a menu fade do not cancel its timer or restart the outgoing track', async t => {
+    const { backend, elements } = browserFixture(t);
+    backend.music('menu', 1); backend.unlock(); backend.music(null, 1, true);
+    backend.unlock(); backend.music(null, 1);
+    assert.ok(elements[0].src.endsWith('/airy.mp3')); assert.equal(elements[0].plays, 1);
+    await delay(150); assert.equal(elements[0].src, '');
+    backend.music('normal', 1); backend.music('menu', 1); backend.dispose();
+    await delay(150); assert.equal(elements[0].src, ''); assert.equal(elements[0].paused, true);
+});
+
+test('browser-denied context resume is silent and only retried by a gesture', async t => {
+    const { backend, contexts } = browserFixture(t);
+    const warnings: unknown[] = []; t.mock.method(console, 'warn', (...args) => warnings.push(args));
+    backend.unlock();
+    let attempts = 0;
+    t.mock.method(contexts[0], 'resume', () => { attempts++; return Promise.reject(Object.assign(Error(), { name: 'NotAllowedError' })); });
+    backend.music('menu', 1); backend.unlock(); await delay(0);
+    for (let i = 0; i < 60; i++) backend.music('menu', 1);
+    assert.equal(attempts, 1); assert.deepEqual(warnings, []);
 });

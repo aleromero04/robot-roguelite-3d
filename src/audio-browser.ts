@@ -22,6 +22,7 @@ export class BrowserAudio implements AudioBackend {
     private disposed = false;
     private switchTimer?: ReturnType<typeof setTimeout>;
     private needsPlay = false;
+    private fadeOut = false;
     private base: string;
     constructor(base = '/audio/') { this.base = base; }
     unlock(): boolean {
@@ -46,8 +47,8 @@ export class BrowserAudio implements AudioBackend {
                 for (const file of new Set(Object.values(SFX).map(s => s.file))) void this.load(file);
             }
             // Repeated gestures can recover a browser-interrupted/suspended context.
-            void this.context.resume().catch(() => this.warn('resume'));
-            this.syncMusic();
+            void this.context.resume().catch(error => { if (error?.name !== 'NotAllowedError') this.warn('resume'); });
+            if (!this.switchTimer) this.syncMusic();
             if (!this.paused && this.current && this.needsPlay) this.playMusic();
             return true;
         } catch { this.warn('unavailable'); return false; }
@@ -82,13 +83,14 @@ export class BrowserAudio implements AudioBackend {
         this.ramp(this.sfxBus, settings.sfxVolume);
         this.ramp(this.musicBus, this.switchTimer ? 0 : this.musicGain);
     }
-    music(track: MusicTrack | null, level: number): void {
+    music(track: MusicTrack | null, level: number, fadeOut = false): void {
         this.level = level;
         if (track === this.desired) {
             this.ramp(this.musicBus, this.switchTimer ? 0 : this.musicGain);
             return;
         }
         this.desired = track;
+        this.fadeOut = fadeOut;
         this.syncMusic();
     }
     private syncMusic(): void {
@@ -111,9 +113,9 @@ export class BrowserAudio implements AudioBackend {
             this.ramp(this.musicBus, this.musicGain, .15);
             if (!this.paused) this.playMusic();
         };
-        // Reset/end stop immediately; normal -> Boss fades OUT, swaps, then fades IN.
+        // Reset/end stop immediately; UX can request a short fade to silence before its reset.
         // A single element makes overlapping music impossible.
-        if (this.current && this.desired && !this.paused) {
+        if (this.current && (this.desired || this.fadeOut) && !this.paused) {
             this.ramp(this.musicBus, 0, .12);
             this.switchTimer = setTimeout(switchTrack, 125);
         } else switchTrack();
@@ -125,14 +127,16 @@ export class BrowserAudio implements AudioBackend {
         const track = this.current;
         void element.play().catch(error => {
             if (this.disposed || this.current !== track || this.paused || error?.name === 'AbortError') return;
-            this.needsPlay = true; this.warn('autoplay');
+            this.needsPlay = true;
+            // Browser policy is expected: retry only on a later user gesture, without warnings.
+            if (error?.name !== 'NotAllowedError') this.warn('autoplay');
         });
     }
     pause(paused: boolean): void {
         if (this.paused === paused) return;
         this.paused = paused;
         if (paused) { this.musicElement?.pause(); for (const stop of this.sources) stop(); }
-        else this.playMusic();
+        else if (!this.needsPlay) this.playMusic();
     }
     play(id: SfxId, gain: number, rate: number, ended: () => void): (() => void) | null {
         const buffer = this.buffers.get(SFX[id].file), context = this.context;

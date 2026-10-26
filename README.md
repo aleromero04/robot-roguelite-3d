@@ -1,8 +1,8 @@
-# PROTOCOL ZERO · Run 3D: seis sectores + Boss
+# CORE//07 · System Breach Protocol
 
 Versión 3D candidata a principal: seis combates normales y un Boss final, conectados físicamente en la misma instalación. TypeScript + Vite + Three.js; arte visual procedural y audio CC0 local, sin nuevas dependencias. Se conservan cámara 3/4, robots, materiales, iluminación, VFX y controles.
 
-Balance actual y comparación antes/después: [BALANCE.md](BALANCE.md). Audio v1 y segunda pasada, recursos, licencias, mezcla y checklist: [docs/AUDIO.md](docs/AUDIO.md). Última pasada: **211/211 tests**, sin cambios de gameplay.
+Balance actual y comparación antes/después: [BALANCE.md](BALANCE.md). Audio v1 y segunda pasada, recursos, licencias, mezcla y checklist: [docs/AUDIO.md](docs/AUDIO.md). UX v1 y flujo de usuario: [docs/UX.md](docs/UX.md). Última pasada: **233/233 tests**, sin cambios de gameplay.
 
 ## Ejecutar y verificar
 
@@ -22,7 +22,15 @@ npm run build
 npm run preview
 ```
 
-`?debug=1` muestra FPS, llamadas de dibujo y una instantánea de solo lectura en `#diagnostics[data-state]`: estado, sector, enemigos, proyectiles, upgrades, apariciones pendientes, salas residentes, geometrías, texturas y estado del audio. No incorpora saltos de sector ni trampas.
+`?debug=1` muestra FPS, llamadas de dibujo y una instantánea de solo lectura en `#diagnostics[data-state]`: pantalla UX, estado, sector, enemigos, proyectiles, upgrades, apariciones pendientes, salas residentes, geometrías, texturas y estado del audio. No incorpora saltos de sector ni trampas.
+
+## UX v1
+
+El juego abre un menú sobre la instalación 3D: **JUGAR**, **CÓMO JUGAR** y **AJUSTES**. La sala y el robot son ambientales; no se ejecuta una run detrás. JUGAR inicia Sector 01 con un fundido de 360 ms.
+
+**Escape** pausa y ofrece Continuar, Ajustes, Reiniciar run y Menú principal. Reiniciar/salir desde pausa exige confirmación; cancelar conserva la run. Escape vuelve un nivel desde Ajustes, ayuda o confirmaciones. Game Over y Victory ofrecen nueva run o menú. Ajustes reutiliza Audio v1 (música, SFX y mute persistentes); su antigua pestaña flotante se sustituye por este panel compartido. El HUD se oculta durante menús y finales.
+
+CORE//07 es la identidad visible; nombre de paquete, repositorio y claves de almacenamiento permanecen iguales. Documentación de arquitectura, verificación visual y límites: [docs/UX.md](docs/UX.md).
 
 ## Controles y recorrido
 
@@ -225,7 +233,7 @@ La barra fija muestra HP actual/máximo y fase en cada actualización. Desaparec
 - `actors.ts`, `effects.ts`, `game.ts`: animación, orientación de balas que giran, VFX, cámara y bucle fijo.
 - `ui.ts`, `style.css`, `index.html`: interfaz original con numeración y tarjetas dinámicas; panel mínimo de audio.
 - `audio.ts`, `audio-browser.ts`, `audio-events.ts`, `audio-controls.ts`: política, backend Web Audio, eventos y controles. Un reproductor de música y buffers SFX compartidos; 12 voces máximas.
-- `public/audio/`, `docs/AUDIO.md`, `docs/audio-licenses/`: dos músicas, 18 SFX seleccionados y trazabilidad CC0 (6,83 MB de audio).
+- `public/audio/`, `docs/AUDIO.md`, `docs/audio-licenses/`: tres músicas (Airy para menú), 18 SFX seleccionados y trazabilidad CC0 (9,39 MB de audio).
 
 La ampliación anterior dejó **160/160 tests**. La pasada de balance partió de ese baseline y terminó con **177/177**, TypeScript estricto, build y `git diff --check` correctos. Los 17 tests nuevos cubren parámetros, suelo variable, artillería, Burrower y Phase 2. Las regresiones de upgrades, burn, escudo, Revive, contacto, núcleo, puertas, Victory y restart siguen pasando.
 

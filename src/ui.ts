@@ -1,13 +1,13 @@
 import { DAMAGE_FEEDBACK } from './player';
 import type { Simulation } from './simulation';
 import { effectiveAttackStats, overdriveActive, UPGRADES, UPGRADE_VALUES, type UpgradeId } from './upgrades';
-import { SECTOR_COUNT, sectorNumber } from './waves';
+import { BOSS_SECTOR, SECTOR_COUNT, sectorNumber } from './waves';
 const $ = <E extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<E>(selector)!;
 export class UI {
     private presentation = '';
     private noticeTime = 0;
-    constructor(start: () => void, choose: (id: UpgradeId) => void) {
-        $('#start').addEventListener('click', start);
+    private introTime = 0;
+    constructor(choose: (id: UpgradeId) => void) {
         $('#upgrade-cards').addEventListener('click', event => {
             const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upgrade]');
             if (button) choose(button.dataset.upgrade as UpgradeId);
@@ -21,7 +21,20 @@ export class UI {
     }
 
     notice(text: string): void { $('#notice').textContent = text; this.noticeTime = 3.2; }
+    reset(): void {
+        this.presentation = ''; this.noticeTime = 0; this.introTime = 0;
+        $('#notice').textContent = ''; $('#notice').style.opacity = '0';
+        $('#sector-intro').classList.remove('visible'); this.flash(0);
+    }
+    sector(wave: number): void {
+        if (wave !== 0 && wave !== BOSS_SECTOR) return;
+        $('#sector-intro strong').textContent = `SECTOR//${sectorNumber(wave)}`;
+        $('#sector-intro span').textContent = wave === 0 ? 'BREACH INITIATED' : 'CORE GUARDIAN';
+        this.introTime = 1.7;
+    }
     update(sim: Simulation, paused: boolean, dt: number): void {
+        this.introTime = Math.max(0, this.introTime - dt);
+        $('#sector-intro').classList.toggle('visible', this.introTime > 0 && !paused);
         const { player: p, progression: run } = sim;
         this.noticeTime = Math.max(0, this.noticeTime - dt);
         $('#notice').style.opacity = this.noticeTime > 0 ? '1' : '0';
@@ -36,9 +49,8 @@ export class UI {
         $('#time').textContent = `${String(Math.floor(sim.elapsed / 60)).padStart(2, '0')}:${String(Math.floor(sim.elapsed % 60)).padStart(2, '0')}`;
         $('#dash-ready').style.opacity = p.dashCooldown > 0 ? '.2' : '1';
         $('#wave').textContent = `SECCIÓN ${sectorNumber(run.wave)} / ${SECTOR_COUNT}`;
-        document.title = `PROTOCOL ZERO · Sector ${sectorNumber(run.wave)}`;
-        $('#sector-name').textContent = `SECTOR ${sectorNumber(run.wave)}`;
-        document.querySelector('.briefing-index')!.textContent = `${sectorNumber(run.wave)} /`;
+        if (document.body.dataset.screen === 'playing') document.title = `CORE//07 · Sector ${sectorNumber(run.wave)}`;
+        $('#sector-name').textContent = `SECTOR//${sectorNumber(run.wave)}`;
         const attack = effectiveAttackStats(p);
         const overdrive = !p.acquired.has('overdrive') ? '' : overdriveActive(p) ? ' · OVERDRIVE ACTIVO' : p.moving ? ' · OVERDRIVE CANCELADO' : ` · OVERDRIVE ${Math.floor(p.overdriveCharge * 100)}%`;
         $('#weapon-stats').textContent = `DAÑO ${Number(attack.damage.toFixed(2))} · INTERVALO ${Math.round(attack.attackCooldown * 1000)} ms${overdrive}`;
@@ -65,38 +77,7 @@ export class UI {
             $('#repair-preview').textContent = `Integridad ${Number(p.hp.toFixed(1))}/${p.stats.maxHp} · Repair restaura ${Number(Math.min(UPGRADE_VALUES.repair, p.stats.maxHp - p.hp).toFixed(1))} HP`;
             document.querySelector<HTMLButtonElement>('.upgrade-card')?.focus({ preventScroll: true });
         }
-        const overlay = paused || !ending && ['ready', 'dead', 'complete'].includes(run.phase);
-        $('#overlay').classList.toggle('hidden', !overlay);
-        document.querySelector('.progress-hud')!.classList.toggle('hidden', overlay || selection);
-        $('#enemy-guide').classList.toggle('hidden', run.phase !== 'ready' || paused);
-        if (!overlay)
-            return;
-        if (paused) {
-            $('#overlay-title').innerHTML = 'ENLACE<br><em>EN PAUSA.</em>';
-            $('#overlay-copy').textContent = 'La simulación está detenida. Conservas tu sección, proyectiles y mejoras.';
-            $('#start').innerHTML = 'REANUDAR <span>↗</span>';
-            $('#overlay-hint').textContent = 'ESC PARA REANUDAR';
-        }
-        else if (run.phase === 'dead') {
-            $('#overlay-title').innerHTML = 'UNIDAD<br><em>DESCONECTADA.</em>';
-            $('#overlay-copy').textContent = `Sección ${sectorNumber(run.wave)}/${SECTOR_COUNT} · ${sim.kills} hostiles neutralizados en ${Math.floor(sim.elapsed)} segundos.`;
-            $('#start').innerHTML = 'REINICIAR UNIDAD <span>↻</span>';
-            $('#overlay-hint').textContent = 'NUEVA INCURSIÓN · STATS INICIALES';
-        }
-        else if (run.phase === 'complete') {
-            $('#overlay-title').innerHTML = 'PROTOCOLO<br><em>COMPLETADO.</em>';
-            $('#overlay-copy').textContent = `${SECTOR_COUNT} sectores asegurados. Boss destruido. ${sim.kills} hostiles neutralizados. Unidad extraída con ${p.hp} HP.`;
-            $('#start').innerHTML = 'NUEVA INCURSIÓN <span>↻</span>';
-            $('#overlay-hint').textContent = 'VERTICAL SLICE COMPLETADO';
-        }
+        document.querySelector('.progress-hud')!.classList.toggle('hidden', paused || selection || ['ready', 'dead', 'complete'].includes(run.phase));
     }
     flash(value: number): void { $('#damage-flash').style.opacity = String(Math.min(1, Math.max(0, value)) * .85); }
-    contextLost(): void {
-        $('#upgrade-overlay').classList.add('hidden');
-        $('#overlay').classList.remove('hidden');
-        $('#overlay-title').textContent = 'GRÁFICOS DESCONECTADOS';
-        $('#overlay-copy').textContent = 'Recarga la página para restaurar el contexto WebGL.';
-        $('#start').textContent = 'RECARGAR';
-        $('#start').onclick = () => location.reload();
-    }
 }

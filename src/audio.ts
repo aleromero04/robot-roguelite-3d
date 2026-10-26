@@ -1,10 +1,10 @@
 /** Audio policy is independent of the browser and never mutates gameplay. */
-export type MusicTrack = 'normal' | 'boss';
+export type MusicTrack = 'menu' | 'normal' | 'boss';
 export const MUSIC_FILES: Record<MusicTrack, string> = {
-    normal: 'music/brute_force_loop.mp3', boss: 'music/fight_looped.m4a',
+    menu: 'music/airy.mp3', normal: 'music/brute_force_loop.mp3', boss: 'music/fight_looped.m4a',
 };
-// Source RMS differs by ~4 dB. These trims sit beneath the user's independent music slider.
-export const MUSIC_TRIM: Record<MusicTrack, number> = { normal: .32, boss: .23 };
+// Gameplay sources differ by ~4 dB RMS; Airy uses the normal trim beneath the same slider.
+export const MUSIC_TRIM: Record<MusicTrack, number> = { menu: .32, normal: .32, boss: .23 };
 const sound = (file: string, gain: number, cooldown: number, voices: number, priority: number, variation = 0, rate = 1) =>
     ({ file: `sfx/${file}.ogg`, gain, cooldown, voices, priority, variation, rate });
 export const SFX = {
@@ -43,7 +43,7 @@ export interface AudioBackend {
     /** Called synchronously from a real click/key gesture, not from a frame or a fetch callback. */
     unlock(): boolean;
     mix(settings: AudioSettings): void;
-    music(track: MusicTrack | null, level: number): void;
+    music(track: MusicTrack | null, level: number, fadeOut?: boolean): void;
     pause(paused: boolean): void;
     play(id: SfxId, gain: number, rate: number, ended: () => void): (() => void) | null;
     dispose(): void;
@@ -92,11 +92,11 @@ export class GameAudio {
         this.backend.mix(this.values);
         try { this.storage?.setItem(AUDIO_STORAGE_KEY, JSON.stringify(this.values)); } catch { /* Private/full storage. */ }
     }
-    setMusic(track: MusicTrack | null, level = 1): void {
+    setMusic(track: MusicTrack | null, level = 1, fadeOut = false): void {
         const safeLevel = volume(level, 1);
         if (this.disposed || this.track === track && this.level === safeLevel) return;
         this.track = track; this.level = safeLevel;
-        this.backend.music(track, safeLevel);
+        this.backend.music(track, safeLevel, fadeOut);
     }
     setPaused(paused: boolean): void {
         if (this.disposed || this.paused === paused) return;
