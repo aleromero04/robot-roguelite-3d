@@ -1,5 +1,6 @@
 import './style.css';
 import './ux.css';
+import './tutorial.css';
 import { Game } from './game';
 try {
     new Game(document.querySelector<HTMLCanvasElement>('#game')!);

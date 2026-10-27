@@ -1,0 +1,17 @@
+#tutorial {
+  position:fixed; z-index:4; left:50%; bottom:144px; transform:translate(-50%,6px);
+  width:max-content; max-width:calc(100vw - 40px); padding:12px 20px; text-align:center;
+  background:#07131aeb; border:1px solid #83b8bd55; border-left:2px solid #91e8de;
+  box-shadow:0 8px 24px #0005; pointer-events:none; opacity:0;
+  transition:opacity .15s,transform .15s;
+}
+#tutorial.visible { opacity:1; transform:translate(-50%,0); }
+#tutorial strong { display:block; color:#d2fff4; font:600 16px/1.4 monospace; letter-spacing:1.4px; }
+#tutorial span { display:block; margin-top:5px; color:#b2c6ce; font:11px/1.5 Arial,sans-serif; }
+#tutorial.confirmed span { color:#91e8de; }
+body:not([data-screen="playing"]) #tutorial { visibility:hidden; }
+#ux #repeat-tutorial { min-height:0; margin-top:12px; padding:7px 2px; width:auto; background:none; border:0; color:#9eb4be; font-size:9px; letter-spacing:1px; }
+#ux #repeat-tutorial:hover,#ux #repeat-tutorial:focus-visible { color:#d2fff4; }
+#tutorial-feedback { display:block; min-height:14px; margin-top:5px; color:#91e8de; font:10px/1.4 Arial,sans-serif; }
+@media(max-width:650px) { #tutorial { bottom:145px; padding:10px 14px; } #tutorial strong { font-size:14px; } }
+@media(prefers-reduced-motion:reduce) { #tutorial { transition:none; } }

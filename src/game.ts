@@ -21,6 +21,8 @@ import { GameAudio } from './audio';
 import { BrowserAudio } from './audio-browser';
 import { AudioEvents } from './audio-events';
 import { MenuAudio } from './audio-menu';
+import { TutorialController } from './tutorial';
+import { TutorialView, tutorialStorage } from './tutorial-view';
 import { bindAudioControls, browserAudioStorage } from './audio-controls';
 /** Render/input coordinator. Gameplay is testable without a browser in Simulation. */
 export class Game {
@@ -55,6 +57,8 @@ export class Game {
     private audio = new GameAudio(this.audioBackend, browserAudioStorage());
     private audioEvents = new AudioEvents(this.audio);
     private menuAudio = new MenuAudio(this.audio);
+    private tutorial = new TutorialController(tutorialStorage());
+    private tutorialView = new TutorialView(this.tutorial);
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
         this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -91,7 +95,7 @@ export class Game {
         document.querySelector('#reload-game')!.addEventListener('click', () => location.reload());
         window.addEventListener('pagehide', event => {
             this.ux.pause(); this.keys.clear(); this.audio.setPaused(true);
-            if (!event.persisted) { removeAudioControls(); this.menus.dispose(); this.audio.dispose(); }
+            if (!event.persisted) { removeAudioControls(); this.menus.dispose(); this.audio.dispose(); this.tutorialView.dispose(); }
         });
         this.resize();
         this.bindInput();
@@ -128,6 +132,7 @@ export class Game {
         this.menus.render(this.ux);
     }
     private resetRun(): void {
+        this.tutorial.stop(); this.tutorialView.reset();
         this.audioEvents.reset();
         this.sim = new Simulation();
         this.actors.reset(); this.effects.clear(); this.statusEffects.clear(); this.burnVisuals.clear();
@@ -138,6 +143,7 @@ export class Game {
     }
     private beginRun(): void {
         this.sim.start();
+        this.tutorial.start(this.sim);
         this.audioEvents.update(this.sim, false);
         this.audio.play('ui');
         this.keys.clear(); this.ui.sector(0);
@@ -200,6 +206,7 @@ export class Game {
         this.ux.update(dt);
         this.menuAudio.update(this.ux);
         this.menus.render(this.ux);
+        this.tutorialView.update(this.tutorial, this.ux.screen === 'playing' || this.ux.screen === 'how' ? dt : 0);
         if (this.ux.screen !== 'playing') {
             if (this.ux.ambient) {
                 this.ambientTime += dt;
@@ -223,7 +230,9 @@ export class Game {
         const ix = Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft'));
         const iz = Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - Number(this.keys.has('KeyW') || this.keys.has('ArrowUp'));
         const previousWave = this.sim.progression.wave;
-        this.sim.update(dt, movementInput(ix, iz));
+        const input = movementInput(ix, iz);
+        this.sim.update(dt, input);
+        this.tutorial.update(this.sim, input, dt);
         this.audioEvents.update(this.sim, false);
         if (previousWave !== this.sim.progression.wave) {
             this.ui.sector(this.sim.progression.wave);

@@ -2,7 +2,7 @@
 
 Versión 3D candidata a principal: seis combates normales y un Boss final, conectados físicamente en la misma instalación. TypeScript + Vite + Three.js; arte visual procedural y audio CC0 local, sin nuevas dependencias. Se conservan cámara 3/4, robots, materiales, iluminación, VFX y controles.
 
-Balance actual y comparación antes/después: [BALANCE.md](BALANCE.md). Audio v1 y segunda pasada, recursos, licencias, mezcla y checklist: [docs/AUDIO.md](docs/AUDIO.md). UX v1 y flujo de usuario: [docs/UX.md](docs/UX.md). Última pasada: **233/233 tests**, sin cambios de gameplay.
+Balance actual y comparación antes/después: [BALANCE.md](BALANCE.md). Audio v1 y segunda pasada, recursos, licencias, mezcla y checklist: [docs/AUDIO.md](docs/AUDIO.md). UX v1 y flujo de usuario: [docs/UX.md](docs/UX.md). Onboarding integrado y checklist: [docs/TUTORIAL.md](docs/TUTORIAL.md).
 
 ## Ejecutar y verificar
 
@@ -31,6 +31,8 @@ El juego abre un menú sobre la instalación 3D: **JUGAR**, **CÓMO JUGAR** y **
 **Escape** pausa y ofrece Continuar, Ajustes, Reiniciar run y Menú principal. Reiniciar/salir desde pausa exige confirmación; cancelar conserva la run. Escape vuelve un nivel desde Ajustes, ayuda o confirmaciones. Game Over y Victory ofrecen nueva run o menú. Ajustes reutiliza Audio v1 (música, SFX y mute persistentes); su antigua pestaña flotante se sustituye por este panel compartido. El HUD se oculta durante menús y finales.
 
 CORE//07 es la identidad visible; nombre de paquete, repositorio y claves de almacenamiento permanecen iguales. Documentación de arquitectura, verificación visual y límites: [docs/UX.md](docs/UX.md).
+
+La primera run enseña movimiento, detenerse para disparar, dash y recogida del núcleo en Sector 01 mediante acciones reales, sin pausar el combate. Al completar toda la secuencia se recuerda localmente. **CÓMO JUGAR → REPETIR TUTORIAL** lo reactiva para la próxima run sin borrar ajustes de audio.
 
 ## Controles y recorrido
 
