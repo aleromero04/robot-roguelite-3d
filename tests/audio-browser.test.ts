@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { BrowserAudio } from '../src/audio-browser.ts';
-import { DEFAULT_AUDIO, MUSIC_TRIM, GameAudio } from '../src/audio.ts';
+import { DEFAULT_AUDIO, MUSIC_FILES, MUSIC_TRIM, SFX, GameAudio } from '../src/audio.ts';
 import { MenuAudio } from '../src/audio-menu.ts';
 import { AudioEvents } from '../src/audio-events.ts';
 import { UXFlow, TRANSITION_HALF } from '../src/ux-flow.ts';
@@ -10,7 +10,7 @@ import { Simulation } from '../src/simulation.ts';
 import { createBoss } from '../src/boss.ts';
 import { BOSS_SECTOR } from '../src/waves.ts';
 
-function browserFixture(t: Parameters<Parameters<typeof test>[1]>[0]) {
+function browserFixture(t: Parameters<Parameters<typeof test>[1]>[0], publicBase = '/') {
     const saved = new Map<string, PropertyDescriptor | undefined>();
     function install(name: string, value: unknown) {
         saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
@@ -54,9 +54,23 @@ function browserFixture(t: Parameters<Parameters<typeof test>[1]>[0]) {
     }
     install('AudioContext', FakeContext); install('Audio', FakeMedia);
     install('fetch', async (url: string) => { requests.push(url); return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) }; });
-    const backend = new BrowserAudio();
+    const backend = new BrowserAudio(publicBase);
     t.after(() => backend.dispose());
     return { backend, requests, elements, contexts };
+}
+
+for (const publicBase of ['/', '/robot-roguelite-3d/']) {
+    test(`music and SFX requests respect the public base ${publicBase}`, async t => {
+        const { backend, requests, elements } = browserFixture(t, publicBase);
+        backend.unlock(); await delay(0);
+        assert.deepEqual(requests, [...new Set(Object.values(SFX).map(s => `${publicBase}audio/${s.file}`))]);
+        for (const track of ['menu', 'normal', 'boss'] as const) {
+            backend.music(null, 1);
+            backend.music(track, 1);
+            assert.equal(elements[0].src, `${publicBase}audio/${MUSIC_FILES[track]}`);
+        }
+        assert.equal(elements.length, 1);
+    });
 }
 
 test('browser allocates no audio before unlock and decodes each shared SFX asset once', async t => {

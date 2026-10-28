@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Abre **http://127.0.0.1:5173/** o el puerto indicado por Vite.
+Abre **http://127.0.0.1:5173/robot-roguelite-3d/** o la URL indicada por Vite.
 
 ```sh
 npm test
@@ -21,6 +21,15 @@ npm run check
 npm run build
 npm run preview
 ```
+
+El destino inicial es **GitHub Pages**, con base `/robot-roguelite-3d/` y URL prevista
+**https://aleromero04.github.io/robot-roguelite-3d/**. `npm run build` genera `dist/`;
+`npm run preview` permite comprobarlo en **http://127.0.0.1:4173/robot-roguelite-3d/**
+(o el puerto indicado). Verifica desde esa subruta el menú, Play y el audio, sin errores 404.
+Vite aplica la base a JS/CSS y el audio utiliza `import.meta.env.BASE_URL` para música y SFX.
+El aviso MIT de Three.js está en [public/THIRD_PARTY_LICENSES.txt](public/THIRD_PARTY_LICENSES.txt)
+y se copia automáticamente a `dist/THIRD_PARTY_LICENSES.txt`. Al actualizar Three.js,
+revisa el aviso frente a `node_modules/three/LICENSE`.
 
 `?debug=1` muestra FPS, llamadas de dibujo y una instantánea de solo lectura en `#diagnostics[data-state]`: pantalla UX, estado, sector, enemigos, proyectiles, upgrades, apariciones pendientes, salas residentes, geometrías, texturas y estado del audio. No incorpora saltos de sector ni trampas.
 

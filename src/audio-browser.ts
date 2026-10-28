@@ -24,7 +24,8 @@ export class BrowserAudio implements AudioBackend {
     private needsPlay = false;
     private fadeOut = false;
     private base: string;
-    constructor(base = '/audio/') { this.base = base; }
+    // Vite's public base includes the trailing slash; filenames stay relative to audio/.
+    constructor(publicBase: string) { this.base = `${publicBase}audio/`; }
     unlock(): boolean {
         if (this.disposed) return false;
         try {

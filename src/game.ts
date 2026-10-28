@@ -53,7 +53,7 @@ export class Game {
     private frames = 0;
     private fps = 60;
     private diagnostic: HTMLOutputElement | null = null;
-    private audioBackend = new BrowserAudio();
+    private audioBackend = new BrowserAudio(import.meta.env.BASE_URL);
     private audio = new GameAudio(this.audioBackend, browserAudioStorage());
     private audioEvents = new AudioEvents(this.audio);
     private menuAudio = new MenuAudio(this.audio);
