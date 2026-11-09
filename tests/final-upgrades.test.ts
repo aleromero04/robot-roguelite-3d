@@ -18,18 +18,18 @@ test('Power Trio independently multiplies all three stats and stacks with common
     const a = createPlayer(), b = createPlayer();
     for (const id of ['power', 'turbo', 'overclock', 'trio'] as const) applyUpgrade(a, id);
     for (const id of ['trio', 'overclock', 'turbo', 'power'] as const) applyUpgrade(b, id);
-    assert.ok(Math.abs(a.stats.damage - 15) < 1e-9); assert.ok(Math.abs(a.stats.speed - 7.182 * 1.1 * 1.1) < 1e-9);
+    assert.ok(Math.abs(a.stats.damage - 15) < 1e-9); assert.ok(Math.abs(a.stats.speed - 6.65 * 1.1 * 1.1) < 1e-9);
     assert.ok(Math.abs(a.stats.attackCooldown - .35 * .85 * .9) < 1e-9);
     for (const key of ['damage', 'speed', 'attackCooldown'] as const) assert.ok(Math.abs(a.stats[key] - b.stats[key]) < 1e-9);
     assert.equal(applyUpgrade(a, 'trio'), false);
     const p = createPlayer(); applyUpgrade(p, 'trio'); assert.deepEqual([...p.acquired], ['trio']);
 });
-test('Triple creates three simultaneous projectiles at -10/0/+10 degrees with ordinary damage', () => {
+test('Triple creates three simultaneous projectiles at -10/0/+10 degrees with 65/100/65 percent damage', () => {
     const sim = shotFixture(); applyUpgrade(sim.player, 'triple'); sim.update(dt, still);
     assert.equal(sim.projectiles.length, 3); assert.equal(sim.events.filter(e => e.type === 'shot' && !e.enemy).length, 1);
     const angles = sim.projectiles.map(p => Math.atan2(p.velocity.z, p.velocity.x));
     assert.ok(Math.abs(angles[1] - angles[0] - Math.PI / 18) < 1e-9); assert.ok(Math.abs(angles[2] - angles[1] - Math.PI / 18) < 1e-9);
-    assert.ok(sim.projectiles.every(p => p.damage === 10));
+    assert.deepEqual(sim.projectiles.map(p => p.damage), [6.5, 10, 6.5]);
 });
 test('Rapid + Triple gives 3 + 3 at 100 ms; movement or dash cancels the entire second event', () => {
     for (const cancel of ['none', 'move', 'dash']) {

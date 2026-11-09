@@ -84,7 +84,7 @@ test('Boss principal receives normal damage and chains only when valid secondari
     const sim=fixture(0);sim.progression.wave=6;sim.boss=createBoss(500,{x:216,z:0});sim.boss.state='recovery';sim.boss.timer=100;
     sim.player.x=207;sim.player.z=5;sim.shockHits=2;
     const shoot=()=>{sim.projectiles.push(createProjectile(shotId++,sim.boss!,sim.boss!,false,10,0,.1,{shock:true}));sim.update(dt,still)};
-    shoot();assert.equal(sim.boss.hp,1590);assert.equal(sim.events.filter(e=>e.type==='shock').length,0);
+    shoot();assert.equal(sim.boss.hp,1890);assert.equal(sim.events.filter(e=>e.type==='shock').length,0);
     const e=createEnemy(501,'grenadier',{x:220,z:0});e.state='recovery';e.timer=100;sim.enemies=[e];sim.shockHits=2;shoot();assert.equal(e.hp,44);
 });
 test('Shock ignores underground Burrower as secondary and as projectile collider', () => {
@@ -109,7 +109,7 @@ for(const triple of [false,true]) test(`Rapid${triple?' + Triple':''} counts imp
         for(const p of sim.projectiles){p.x=sim.enemies[0].x;p.z=8;p.velocity=still;impacts++}
         sim.update(dt,still);
     }
-    assert.equal(impacts,triple?6:2);assert.equal(sim.shockHits,impacts%3);assert.equal(sim.enemies[0].hp,1000-impacts*10);
+    assert.equal(impacts,triple?6:2);assert.equal(sim.shockHits,impacts%3);assert.equal(sim.enemies[0].hp,1000-(triple?46:20));
 });
 for(const kind of ['basic','runner','shooter','grenadier','burrower'] as const) test(`Frost scales only ${kind} normal locomotion by .80`,()=>{
     const normal=createEnemy(1,kind,still),frost=createEnemy(1,kind,still),p={x:12,z:0};
@@ -148,7 +148,7 @@ test('Boss Frost affects approach only, never Charge or attack clocks in either 
         if(state==='approach')close(b.x,a.x*.8);else assert.deepEqual(a,b);
         assert.equal(a.timer,b.timer);assert.deepEqual(ia,ib);
     }
-    assert.equal(BOSS_STATS.hp,1600);assert.equal(BOSS_STATS.chargeSpeed,14);
+    assert.equal(BOSS_STATS.hp,1900);assert.equal(BOSS_STATS.chargeSpeed,14);
 });
 test('Frost expiration keeps running underground and no new hit can refresh it there',()=>{
     const sim=fixture(1),b=createEnemy(100,'burrower',still);b.state='emergence';b.timer=.9;sim.enemies=[b];sim.frost.set(100,.3);
@@ -180,8 +180,9 @@ test('Overdrive Rapid + Triple remains 3 + 3 at 100ms; modifiers snapshot per pr
     sim.player.shotCooldown=1000;frames(sim,60);sim.player.shotCooldown=0;sim.update(dt,still);
     assert.equal(sim.projectiles.length,3);close(sim.player.shotCooldown,.35*.9*.85*.8);
     frames(sim,5);assert.equal(sim.projectiles.length,3);frames(sim,1);assert.equal(sim.projectiles.length,6);
-    for(const p of sim.projectiles){close(p.damage,18.75);assert.ok(p.flame&&p.shock&&p.frost&&p.homing);assert.equal(p.pierces,1);assert.equal(p.bounces,1)}
-    sim.update(dt,{x:1,z:0});assert.equal(sim.player.overdriveCharge,0);assert.ok(sim.projectiles.every(p=>p.damage===18.75));
+    sim.projectiles.forEach((p,i)=>{close(p.damage,18.75*(i%3===1?1:.65));assert.ok(p.flame&&p.shock&&p.frost&&p.homing);assert.equal(p.pierces,1);assert.equal(p.bounces,1)});
+    const damage=sim.projectiles.map(p=>p.damage);
+    sim.update(dt,{x:1,z:0});assert.equal(sim.player.overdriveCharge,0);assert.deepEqual(sim.projectiles.map(p=>p.damage),damage);
 });
 test('moving or dashing during Rapid cancels both pending event and Overdrive; cards reset charging',()=>{
     for(const dash of [false,true]) {

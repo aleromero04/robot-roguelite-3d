@@ -1,6 +1,6 @@
 import { direction } from '../combat.ts';
 import { distance, intersects, moveCircle, segmentBox, segmentCircle, type Point, type Obstacle, type Bounds } from '../physics.ts';
-import { ENEMY_STATS, PLAYER_STATS, type EnemyKind } from '../stats.ts';
+import { ENEMY_STATS, ENEMY_SECTOR_MOBILITY, PLAYER_STATS, type EnemyKind } from '../stats.ts';
 import { updateBasic } from './basic.ts';
 import { updateRunner } from './runner.ts';
 import { updateShooter } from './shooter.ts';
@@ -72,6 +72,11 @@ export function updateEnemy(enemy: Enemy, player: Point, peers: readonly Enemy[]
         : enemy.kind === 'basic' ? updateBasic(enemy, player, dt, visible) : updateRunner(enemy, player, dt, visible);
     if (isUnderground(enemy) || intent.emerged) { enemy.walking = false; return intent; }
     let velocity = intent.velocity;
+    // Accelerate ordinary pursuit, never charges, burrowing, or ranged enemies' retreat.
+    const ranged = enemy.kind === 'shooter' || enemy.kind === 'grenadier';
+    const closing = velocity.x * (player.x - enemy.x) + velocity.z * (player.z - enemy.z) > 0;
+    const pressure = !ranged || closing
+        ? ENEMY_SECTOR_MOBILITY[Math.max(0, Math.min(context.sector, ENEMY_SECTOR_MOBILITY.length - 1))] : 1;
     if (enemy.state === 'chase' || (enemy.kind === 'grenadier' && enemy.state === 'recovery')) {
         velocity = steer(enemy, velocity, player, obstacles, bounds);
         let sx = 0, sz = 0;
@@ -88,7 +93,7 @@ export function updateEnemy(enemy: Enemy, player: Point, peers: readonly Enemy[]
         velocity = { x: velocity.x + sx * cap, z: velocity.z + sz * cap };
     }
     if (enemy.state === 'chase' || (enemy.kind === 'grenadier' && enemy.state === 'recovery')) {
-        const multiplier = context.locomotionMultiplier ?? 1;
+        const multiplier = (context.locomotionMultiplier ?? 1) * pressure;
         velocity = { x: velocity.x * multiplier, z: velocity.z * multiplier };
     }
     const previous = { x: enemy.x, z: enemy.z };

@@ -7,7 +7,7 @@ export const UPGRADE_VALUES = {
     overdriveCharge: 1, overdriveDamage: 1.25, overdriveInterval: .8,
     flameTicks: 3, flameFraction: .2, flameInterval: .5,
     reviveFraction: .4, reviveInvulnerability: 2,
-    trioDamage: 1.2, trioSpeed: 1.1, trioCooldown: .9, tripleAngle: Math.PI / 18,
+    trioDamage: 1.2, trioSpeed: 1.1, trioCooldown: .9, tripleAngle: Math.PI / 18, tripleSideDamage: .65,
     rapidExtraShots: 1, rapidInterval: .1,
     homingRange: 10, homingCone: Math.PI / 4, homingTurnRate: 1.2, homingTotalTurn: Math.PI / 4,
 } as const;

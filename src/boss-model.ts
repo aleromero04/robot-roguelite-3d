@@ -60,7 +60,8 @@ export class BossView {
             const marker = box(this.radial, material, Math.sin(a) * 2.5, .065, Math.cos(a) * 2.5, .1, .015, .9);
             marker.rotation.y = a;
         }
-        for (const a of [-BOSS_STATS.splitAngle, 0, BOSS_STATS.splitAngle]) {
+        for (let i = 0; i < BOSS_STATS.phase2SplitCount; i++) {
+            const a = (i - 2) * BOSS_STATS.phase2SplitSpread;
             const marker = box(this.split, material, Math.sin(a) * 3.3, .065, Math.cos(a) * 3.3, .09, .015, 3.1);
             marker.rotation.y = a;
         }
@@ -93,8 +94,17 @@ export class BossView {
         this.charge.rotation.set(-Math.PI / 2, 0, Math.atan2(chargeDirection.x, chargeDirection.z));
         this.charge.material.opacity = (boss.phase === 2 ? .31 : .23) + Math.sin(time * 18) * .045;
         this.radial.visible = warning && boss.pattern === 'radial' || boss.state === 'radial';
-        this.radial.rotation.y = boss.state === 'radial' ? -BOSS_STATS.radialOffset : 0;
+        this.radial.rotation.y = boss.state === 'radial'
+            ? -BOSS_STATS.radialOffsets[BOSS_STATS.radialOffsets.length - boss.radialBurstsLeft] : 0;
         this.split.visible = warning && boss.pattern === 'split';
+        const spread = boss.phase === 2 ? BOSS_STATS.phase2SplitSpread : BOSS_STATS.splitAngle;
+        const count = boss.phase === 2 ? BOSS_STATS.phase2SplitCount : BOSS_STATS.splitCount;
+        this.split.children.forEach((marker, i) => {
+            marker.visible = i < count;
+            const angle = (i - (count - 1) / 2) * spread;
+            marker.position.set(Math.sin(angle) * 3.3, .065, Math.cos(angle) * 3.3);
+            marker.rotation.y = angle;
+        });
         this.split.rotation.y = Math.atan2(boss.aim.x, boss.aim.z);
     }
     dispose(): void {

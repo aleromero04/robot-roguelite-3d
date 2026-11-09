@@ -3,18 +3,20 @@ import { clamp, distance, moveCircle, segmentBoxTime, segmentCircle, type Bounds
 
 /** Boss-only balance: normal enemy and player stats remain independent. Units: seconds / world units. */
 export const BOSS_STATS = {
-    hp: 1600, radius: 1.25, chargeDamage: 28, projectileDamage: 16,
+    hp: 1900, radius: 1.25, chargeDamage: 28, projectileDamage: 16,
     chargeWindup: 1, chargeSpeed: 14, chargeDuration: .65,
     secondChargePause: .3, secondChargeWindup: .85, secondChargeHold: .25,
     radialWindup: .9, radialCount: 12, radialSpeed: 7, radialLife: 3.5,
-    radialOffset: Math.PI / 12, splitWindup: .85, splitCount: 3,
+    radialOffsets: [0, Math.PI / 12, Math.PI / 24], splitWindup: .85, splitCount: 3,
+    phase2SplitCount: 5, phase2SplitSpread: 5 * Math.PI / 36,
     splitSpeed: 7.5, splitDelay: .7, splitAngle: Math.PI / 9, childSpeed: 8, childLife: 2.4,
     phaseReaction: .8,
     phases: [
-        { speed: 2.4, approach: 2, recovery: 1.5, splitInterval: .32, secondRadialEvery: 3, radialDelay: .45, projectileMultiplier: 1 },
-        { speed: 3, approach: 1.25, recovery: .8, splitInterval: .19, secondRadialEvery: 1, radialDelay: .38, projectileMultiplier: 1.08 },
+        { speed: 2.4, approach: 2, recovery: 1.5, splitInterval: .32, radialDelay: .45, projectileMultiplier: 1 },
+        { speed: 3, approach: 1.1, recovery: .7, splitInterval: .19, radialDelay: .38, projectileMultiplier: 1.08 },
     ],
 } as const;
+export const BOSS_ADDS = { cooldown: 12, maxAlive: 4, group: ['basic', 'runner'] } as const;
 export const BOSS_PATTERNS = ['charge', 'radial', 'split'] as const;
 export type BossPattern = typeof BOSS_PATTERNS[number];
 export type BossState = 'approach' | 'windup' | 'charge' | 'charge-pause' | 'radial' | 'split' | 'recovery' | 'phase-change' | 'dead';
@@ -22,7 +24,7 @@ export interface Boss extends Point {
     id: number; hp: number; maxHp: number; radius: number; phase: 1 | 2;
     state: BossState; timer: number; pattern: BossPattern; lastPattern?: BossPattern;
     aim: Point; dir: Point; walking: boolean; chargeHit: boolean; shotsLeft: number;
-    radialRuns: number; secondRadial: boolean; hitFlash: number; recoil: number;
+    radialBurstsLeft: number; hitFlash: number; recoil: number;
     chargeIndex: 0 | 1;
 }
 export interface BossShot { origin: Point; direction: Point; split: boolean }
@@ -30,12 +32,12 @@ export interface BossIntent { shots: BossShot[]; hit: number; phaseChanged: bool
 export function createBoss(id: number, position: Point): Boss {
     return { ...position, id, hp: BOSS_STATS.hp, maxHp: BOSS_STATS.hp, radius: BOSS_STATS.radius, phase: 1,
         state: 'approach', timer: BOSS_STATS.phases[0].approach, pattern: 'charge', aim: { x: -1, z: 0 },
-        dir: { x: -1, z: 0 }, walking: false, chargeHit: false, shotsLeft: 0, radialRuns: 0,
-        secondRadial: false, hitFlash: 0, recoil: 0, chargeIndex: 0 };
+        dir: { x: -1, z: 0 }, walking: false, chargeHit: false, shotsLeft: 0,
+        radialBurstsLeft: 0, hitFlash: 0, recoil: 0, chargeIndex: 0 };
 }
 export function stopBoss(boss: Boss): void {
     boss.state = 'dead'; boss.timer = 0; boss.shotsLeft = 0;
-    boss.secondRadial = false; boss.walking = false; boss.recoil = 0; boss.chargeIndex = 0;
+    boss.radialBurstsLeft = 0; boss.walking = false; boss.recoil = 0; boss.chargeIndex = 0;
 }
 export function radialDirections(offset = 0): Point[] {
     return Array.from({ length: BOSS_STATS.radialCount }, (_, i) => {
@@ -51,7 +53,7 @@ export function updateBoss(boss: Boss, player: Point, obstacles: Obstacle[], bou
     boss.walking = false;
     if (boss.phase === 1 && boss.hp <= boss.maxHp / 2) {
         boss.phase = 2; boss.state = 'phase-change'; boss.timer = BOSS_STATS.phaseReaction;
-        boss.shotsLeft = 0; boss.secondRadial = false; boss.chargeIndex = 0; intent.phaseChanged = true;
+        boss.shotsLeft = 0; boss.radialBurstsLeft = 0; boss.chargeIndex = 0; intent.phaseChanged = true;
         return intent;
     }
     const tuning = BOSS_STATS.phases[boss.phase - 1];
@@ -92,12 +94,11 @@ export function updateBoss(boss: Boss, player: Point, obstacles: Obstacle[], bou
             boss.timer = BOSS_STATS.chargeDuration; boss.chargeHit = false;
         }
         if (boss.pattern === 'radial') {
-            radialDirections().forEach(dir => fire(dir)); boss.radialRuns++;
-            boss.secondRadial = boss.radialRuns % tuning.secondRadialEvery === 0;
-            if (boss.secondRadial) boss.timer = tuning.radialDelay;
-            else recover();
+            radialDirections(BOSS_STATS.radialOffsets[0]).forEach(dir => fire(dir));
+            boss.radialBurstsLeft = BOSS_STATS.radialOffsets.length - 1;
+            boss.timer = tuning.radialDelay;
         }
-        if (boss.pattern === 'split') { boss.shotsLeft = BOSS_STATS.splitCount; boss.timer = 0; }
+        if (boss.pattern === 'split') { boss.shotsLeft = boss.phase === 1 ? BOSS_STATS.splitCount : BOSS_STATS.phase2SplitCount; boss.timer = 0; }
     } else if (boss.state === 'charge') {
         const start = { x: boss.x, z: boss.z };
         const step = Math.min(dt, Math.max(0, boss.timer + dt)) * BOSS_STATS.chargeSpeed;
@@ -123,10 +124,20 @@ export function updateBoss(boss: Boss, player: Point, obstacles: Obstacle[], bou
             } else recover();
         }
     } else if (boss.state === 'radial' && boss.timer <= 1e-9) {
-        radialDirections(BOSS_STATS.radialOffset).forEach(dir => fire(dir));
-        boss.secondRadial = false; recover();
+        const offset = BOSS_STATS.radialOffsets[BOSS_STATS.radialOffsets.length - boss.radialBurstsLeft];
+        radialDirections(offset).forEach(dir => fire(dir));
+        boss.radialBurstsLeft--;
+        if (boss.radialBurstsLeft > 0) boss.timer += tuning.radialDelay;
+        else recover();
     } else if (boss.state === 'split' && boss.timer <= 1e-9) {
-        boss.aim = direction(boss, player); fire(boss.aim, true);
+        if (boss.phase === 1) {
+            boss.aim = direction(boss, player); fire(boss.aim, true);
+        } else {
+            // Five staggered lanes around the warning's locked aim; three fragments per parent.
+            const offset = (BOSS_STATS.phase2SplitCount - boss.shotsLeft - (BOSS_STATS.phase2SplitCount - 1) / 2) * BOSS_STATS.phase2SplitSpread;
+            const heading = Math.atan2(boss.aim.z, boss.aim.x) + offset;
+            fire({ x: Math.cos(heading), z: Math.sin(heading) }, true);
+        }
         boss.shotsLeft--; boss.timer += tuning.splitInterval;
         if (!boss.shotsLeft) recover();
     } else if ((boss.state === 'recovery' || boss.state === 'phase-change') && boss.timer <= 1e-9) {

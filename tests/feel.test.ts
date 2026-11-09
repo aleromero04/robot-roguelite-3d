@@ -10,7 +10,7 @@ import { createPlayer, updatePlayer } from '../src/player.ts';
 import { createProjectile } from '../src/projectiles.ts';
 const dt = 1 / 60;
 test('movement increases preserve roles, damage, cooldown and moderate enemy HP', () => {
-    assert.equal(PLAYER_STATS.speed, 7.182);
+    assert.equal(PLAYER_STATS.speed, 6.65);
     assert.equal(PLAYER_STATS.damage, 10);
     assert.equal(PLAYER_STATS.attackCooldown, .35);
     assert.deepEqual([ENEMY_STATS.basic, ENEMY_STATS.runner, ENEMY_STATS.shooter].map(s => s.speed), [2.431, 3.888, 2.53]);
@@ -24,7 +24,7 @@ test('movement increases preserve roles, damage, cooldown and moderate enemy HP'
     const player = createPlayer();
     const before = { ...player };
     updatePlayer(player, { x: 1, z: 0 }, dt, [], roomBounds(0));
-    assert.ok(Math.abs(distance(player, before) - 7.182 * dt) < 1e-9);
+    assert.ok(Math.abs(distance(player, before) - 6.65 * dt) < 1e-9);
 });
 test('rooms share render/collision footprints but have distinct asymmetric layouts', () => {
     assert.equal(new Set(ROOM_LAYOUTS.slice(0, 6).map(r => JSON.stringify(r.machinery))).size, 6);

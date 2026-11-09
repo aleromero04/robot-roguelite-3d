@@ -170,7 +170,7 @@ test('movement or dash cancels queued Rapid shots; already-fired projectiles per
 test('new run clears all acquired upgrades, mutable stats, offers and pending bursts', () => {
     const old = burstFixture(); UPGRADES.forEach(u => applyUpgrade(old.player, u.id));
     const fresh = new Simulation(seededRandom());
-    assert.equal(fresh.player.acquired.size, 0); assert.equal(fresh.player.stats.speed, 7.182);
+    assert.equal(fresh.player.acquired.size, 0); assert.equal(fresh.player.stats.speed, 6.65);
     assert.equal(fresh.player.stats.damage, 10); assert.equal(fresh.player.stats.maxHp, 80);
     assert.equal(fresh.burstShots, 0); assert.deepEqual(fresh.offeredUpgrades, []);
     assert.equal(eligibleUpgrades(fresh.player).length, 17);

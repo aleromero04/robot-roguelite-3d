@@ -1,4 +1,5 @@
 import { bossPilotInput } from './pilot.ts';
+import { seededRandom } from './helpers.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BOSS_PATTERNS, BOSS_STATS, createBoss, radialDirections, stopBoss, updateBoss } from '../src/boss.ts';
@@ -11,7 +12,7 @@ import { distance, intersects } from '../src/physics.ts';
 const dt = 1 / 60, bounds = { minX: -30, maxX: 30, minZ: -20, maxZ: 20 };
 const player = { x: 10, z: 4 };
 function fixture() {
-    const sim = new Simulation(); sim.progression.wave = BOSS_SECTOR;
+    const sim = new Simulation(seededRandom()); sim.progression.wave = BOSS_SECTOR;
     sim.player.x = ROOM_CENTERS[BOSS_SECTOR] - 12; sim.player.z = 0; sim.start();
     return sim;
 }
@@ -50,39 +51,48 @@ test('Charge uses its telegraphed line despite player movement, hits only once, 
     }
     assert.equal(hits, 1); assert.equal(boss.state, 'recovery'); assert.ok(boss.x <= 3.65);
 });
-test('Radial emits twelve evenly spaced directions and delayed ring rotates fifteen degrees', () => {
-    const boss = createBoss(1, { x: 0, z: 0 }); boss.state = 'windup'; boss.pattern = 'radial'; boss.timer = 0; boss.radialRuns = 2;
-    const first = updateBoss(boss, player, [], bounds, dt).shots;
-    assert.equal(first.length, 12); assert.equal(boss.state, 'radial');
-    for (let i = 1; i < 12; i++) {
-        const a = first[i - 1].direction, b = first[i].direction;
-        assert.ok(Math.abs(a.x * b.x + a.z * b.z - Math.cos(Math.PI / 6)) < 1e-9);
-    }
-    for (let i = 0; i < 26; i++) assert.equal(updateBoss(boss, player, [], bounds, dt).shots.length, 0);
-    const second = updateBoss(boss, player, [], bounds, dt).shots;
-    assert.equal(second.length, 12);
-    assert.deepEqual(second.map(s => s.direction), radialDirections(Math.PI / 12));
-    assert.ok(Math.abs(Math.atan2(second[0].direction.z, second[0].direction.x) - Math.PI / 12) < 1e-9);
-});
-test('Phase 2 has more frequent second rings and moderate movement/recovery/interval changes', () => {
-    const doubleRings: number[] = [];
-    for (const phase of [1, 2] as const) {
-        let doubles = 0;
-        const boss = createBoss(1, { x: 0, z: 0 }); boss.phase = phase;
-        for (let i = 0; i < 6; i++) {
-            boss.state = 'windup'; boss.pattern = 'radial'; boss.timer = 0;
-            assert.equal(updateBoss(boss, player, [], bounds, dt).shots.length, 12);
-            if (boss.secondRadial) doubles++;
+for (const phase of [1, 2] as const) test(`Phase ${phase} Radial emits three sequential rotated rings, then recovers`, () => {
+    const boss = createBoss(1, { x: 0, z: 0 }); boss.phase = phase;
+    boss.state = 'windup'; boss.pattern = 'radial'; boss.timer = BOSS_STATS.radialWindup;
+    const bursts: { time: number; directions: { x: number; z: number }[] }[] = [];
+    for (let frame = 1; frame < 180; frame++) {
+        const shots = updateBoss(boss, player, [], bounds, dt).shots;
+        if (shots.length) {
+            assert.equal(shots.length, 12); assert.ok(shots.every(s => !s.split));
+            bursts.push({ time: frame * dt, directions: shots.map(s => s.direction) });
         }
-        doubleRings.push(doubles);
+        if (boss.state === 'recovery') break;
     }
-    assert.deepEqual(doubleRings, [2, 6]);
-    assert.ok(BOSS_STATS.phases[1].speed < 6.84);
-    assert.ok(BOSS_STATS.phases[1].speed < BOSS_STATS.phases[0].speed * 1.3);
-    assert.equal(BOSS_STATS.phases[1].recovery, .8);
-    assert.equal(BOSS_STATS.phases[1].splitInterval, .19);
+    assert.equal(bursts.length, 3);
+    const offsets = [0, Math.PI / 12, Math.PI / 24];
+    bursts.forEach((burst, i) => {
+        assert.deepEqual(burst.directions, radialDirections(offsets[i]));
+        const expected = .9 + i * (phase === 1 ? .45 : .38);
+        assert.ok(Math.abs(burst.time - expected) <= dt + 1e-9);
+        if (i) assert.ok(burst.time > bursts[i - 1].time);
+    });
+    assert.equal(boss.radialBurstsLeft, 0); assert.equal(boss.state, 'recovery');
+    assert.equal(boss.timer, phase === 1 ? 1.5 : .7);
 });
-test('Split fires exactly three staggered parents and every parent produces only three fixed children', () => {
+test('every Radial repeats three pulses without retaining counters; phase movement and cooldowns stay unchanged', () => {
+    for (const phase of [1, 2] as const) {
+        const boss = createBoss(1, { x: 0, z: 0 }); boss.phase = phase;
+        for (let attack = 0; attack < 6; attack++) {
+            boss.state = 'windup'; boss.pattern = 'radial'; boss.timer = 0;
+            let bursts = 0;
+            for (let frame = 0; frame < 90; frame++) {
+                if (updateBoss(boss, player, [], bounds, dt).shots.length) bursts++;
+                if (boss.state === 'recovery') break;
+            }
+            assert.equal(bursts, 3); assert.equal(boss.radialBurstsLeft, 0);
+        }
+    }
+    assert.deepEqual(BOSS_STATS.phases.map(p => p.speed), [2.4, 3]);
+    assert.deepEqual(BOSS_STATS.phases.map(p => p.recovery), [1.5, .7]);
+    assert.deepEqual(BOSS_STATS.phases.map(p => p.approach), [2, 1.1]);
+    assert.deepEqual(BOSS_STATS.phases.map(p => p.splitInterval), [.32, .19]);
+});
+test('Split fires three/five staggered parents in Phase 1/2 and every actual parent produces three fixed children', () => {
     for (const phase of [1, 2] as const) {
         const boss = createBoss(1, { x: 0, z: 0 }); boss.phase = phase; boss.pattern = 'split'; boss.state = 'windup'; boss.timer = 0;
         const fired: { frame: number; origin: { x: number; z: number }; direction: { x: number; z: number } }[] = [];
@@ -91,29 +101,37 @@ test('Split fires exactly three staggered parents and every parent produces only
             for (const shot of result.shots) { assert.ok(shot.split); fired.push({ frame: i, ...shot }); }
             if (boss.state === 'recovery') break;
         }
-        assert.equal(fired.length, 3);
-        for (let i = 1; i < 3; i++) assert.ok(Math.abs((fired[i].frame - fired[i - 1].frame) * dt - BOSS_STATS.phases[phase - 1].splitInterval) <= dt);
+        const count = phase === 1 ? 3 : 5;
+        assert.equal(fired.length, count);
+        for (let i = 1; i < count; i++) assert.ok(Math.abs((fired[i].frame - fired[i - 1].frame) * dt - BOSS_STATS.phases[phase - 1].splitInterval) <= dt);
         let nextId = 100, fragments = 0;
         const callbacks = { hurtPlayer: () => {}, hurtEnemy: () => {}, impact: () => {}, canDamagePlayer: () => false,
             nextId: () => nextId++, fragment: () => { fragments++; } };
         for (const firedShot of fired) {
-            const parent = createProjectile(nextId++, { x: 0, z: 0 }, { x: 10, z: 0 }, true, 12, 7.5, 4); parent.splitAfter = .7;
+            const heading = Math.atan2(firedShot.direction.z, firedShot.direction.x);
+            const speed = 7.5 * (phase === 1 ? 1 : 1.08);
+            const parent = createProjectile(nextId++, firedShot.origin,
+                { x: firedShot.origin.x + firedShot.direction.x, z: firedShot.origin.z + firedShot.direction.z }, true, 16, speed, 3.5);
+            parent.splitAfter = .7; parent.fragmentSpeed = 8 * (phase === 1 ? 1 : 1.08);
             let shots: Projectile[] = [parent];
-            shots = updateProjectiles(shots, .69, [], bounds, player, [], callbacks);
-            assert.deepEqual(shots, [parent]); assert.ok(Math.abs(parent.x - 5.175) < 1e-9);
-            shots = updateProjectiles(shots, .01, [], bounds, player, [], callbacks);
+            shots = updateProjectiles(shots, .69, [], bounds, { x: 100, z: 100 }, [], callbacks);
+            assert.deepEqual(shots, [parent]); assert.ok(Math.abs(distance(parent, firedShot.origin) - speed * .69) < 1e-9);
+            shots = updateProjectiles(shots, .01, [], bounds, { x: 100, z: 100 }, [], callbacks);
             assert.equal(shots.length, 3); assert.ok(!shots.includes(parent));
             assert.equal(new Set(shots.map(s => s.id)).size, 3);
             shots.forEach((s, i) => {
-                assert.equal(s.splitAfter, undefined); assert.equal(s.homing, false); assert.equal(s.damage, 12);
-                assert.ok(Math.abs(Math.atan2(s.velocity.z, s.velocity.x) - (i - 1) * Math.PI / 9) < 1e-9);
-                assert.ok(Math.abs(s.x - 5.25) < 1e-9);
+                assert.equal(s.splitAfter, undefined); assert.equal(s.homing, false); assert.equal(s.damage, 16);
+                const childHeading = heading + (i - 1) * Math.PI / 9;
+                assert.ok(Math.abs(s.velocity.x / parent.fragmentSpeed! - Math.cos(childHeading)) < 1e-9);
+                assert.ok(Math.abs(s.velocity.z / parent.fragmentSpeed! - Math.sin(childHeading)) < 1e-9);
+                assert.ok(Math.abs(distance(s, firedShot.origin) - speed * .7) < 1e-9);
+                assert.ok(Math.abs(Math.hypot(s.velocity.x, s.velocity.z) - parent.fragmentSpeed!) < 1e-9);
             });
             const velocities = shots.map(s => ({ ...s.velocity }));
-            shots = updateProjectiles(shots, 1, [], bounds, player, [], callbacks);
+            shots = updateProjectiles(shots, 1, [], bounds, { x: 100, z: 100 }, [], callbacks);
             assert.equal(shots.length, 3); assert.deepEqual(shots.map(s => s.velocity), velocities);
         }
-        assert.equal(fragments, 3);
+        assert.equal(fragments, count);
     }
 });
 test('cover or impact before the split destroys parent without producing children', () => {
@@ -125,28 +143,32 @@ test('cover or impact before the split destroys parent without producing childre
     });
     assert.equal(shots.length, 0); assert.equal(fragments, 0);
 });
-test('Phase 2 triggers once at exactly half health and interrupts pending attacks', () => {
-    const boss = createBoss(1, { x: 0, z: 0 }); boss.state = 'split'; boss.shotsLeft = 2; boss.timer = .1;
+for (const state of ['split', 'radial'] as const) test(`Phase 2 triggers once at half health and cancels pending ${state}`, () => {
+    const boss = createBoss(1, { x: 0, z: 0 }); boss.state = state; boss.shotsLeft = 2; boss.radialBurstsLeft = 2; boss.timer = .1;
     boss.hp = boss.maxHp / 2;
     let phases = 0;
     for (let i = 0; i < 120; i++) {
         const intent = updateBoss(boss, player, [], bounds, dt);
         if (intent.phaseChanged) phases++;
-        if (i === 0) { assert.equal(boss.state, 'phase-change'); assert.equal(boss.shotsLeft, 0); }
+        if (i === 0) {
+            assert.equal(boss.state, 'phase-change'); assert.equal(boss.shotsLeft, 0);
+            assert.equal(boss.radialBurstsLeft, 0); assert.equal(intent.shots.length, 0);
+        }
+        if (boss.state === 'phase-change') assert.equal(intent.shots.length, 0);
     }
     assert.equal(phases, 1); assert.equal(boss.phase, 2);
 });
 test('boss death cancels every attack state; Victory retains already-fired bullets until expiry', () => {
     for (const state of ['windup', 'charge', 'radial', 'split', 'phase-change'] as const) {
         const sim = fixture(), boss = sim.boss!;
-        boss.state = state; boss.timer = 1; boss.shotsLeft = 3; boss.secondRadial = true;
+        boss.state = state; boss.timer = 1; boss.shotsLeft = 3; boss.radialBurstsLeft = 2;
         sim.player.shotCooldown = 100;
         const bullet = createProjectile(9000, { x: boss.x + 5, z: 3 }, { x: boss.x + 10, z: 3 }, true, 12, 7.5, 4);
         bullet.splitAfter = .7;
         sim.projectiles = [createProjectile(9001, boss, boss, false, boss.hp, 0, 1), bullet];
         sim.update(dt, { x: 0, z: 0 });
         assert.equal(sim.progression.phase, 'ending'); assert.equal(boss.hp, 0); assert.equal(boss.state, 'dead');
-        assert.equal(boss.timer, 0); assert.equal(boss.shotsLeft, 0); assert.equal(boss.secondRadial, false);
+        assert.equal(boss.timer, 0); assert.equal(boss.shotsLeft, 0); assert.equal(boss.radialBurstsLeft, 0);
         assert.equal(sim.offeredUpgrades.length, 0); assert.equal(sim.burstShots, 0);
         assert.ok(sim.projectiles.includes(bullet));
         const x = bullet.x, hp = sim.player.hp;

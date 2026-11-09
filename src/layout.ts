@@ -62,7 +62,11 @@ export const ROOM_LAYOUTS: readonly RoomLayout[] = ROOM_CENTERS.map((_, i) => {
     if (i === BOSS_SECTOR) return {
         machinery: [{ x: -12, z: -7.5, halfX: .65, halfZ: 1, tall: true }, { x: 12, z: -7.5, halfX: .65, halfZ: 1, tall: true }],
         reactor: { x: 0, z: -8.3, halfX: 2.2, halfZ: 2.2 },
-        candidates: [], rewardPoints: [],
+        candidates: [
+            { x: -10, z: -4 }, { x: -6, z: -7.5 }, { x: 6, z: -7.5 }, { x: 10, z: -4 },
+            { x: -10, z: 2 }, { x: -5, z: 2 }, { x: 5, z: 2 }, { x: 10, z: 2 },
+            { x: -10, z: 8 }, { x: -5, z: 8 }, { x: 0, z: 8 }, { x: 5, z: 8 }, { x: 10, z: 8 },
+        ], rewardPoints: [],
     };
     const base = BASE_LAYOUTS[i % BASE_LAYOUTS.length], sign = i < 3 ? 1 : -1;
     return {

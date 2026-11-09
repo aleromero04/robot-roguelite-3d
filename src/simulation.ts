@@ -4,7 +4,7 @@ import { isUnderground } from './enemies/types.ts';
 import { refreshBurn, tickBurns, type Burn } from './burn.ts';
 import { CONTACT_DAMAGE, stopAtBodies, separateBodies } from './contact.ts';
 import { REWARD, rewardPosition } from './rewards.ts';
-import { BOSS_STATS, createBoss, stopBoss, updateBoss, type Boss } from './boss.ts';
+import { BOSS_ADDS, BOSS_STATS, createBoss, stopBoss, updateBoss, type Boss } from './boss.ts';
 import { canAutoAttack, direction, nearestEnemy } from './combat.ts';
 import { createEnemy, updateEnemy, type Enemy } from './enemies/enemies.ts';
 import { createGates, createWorldObstacles, fullyCrossed, gateObstacle, roomBounds, safeSpawn, spawnPositions, updateGate, WORLD_BOUNDS, ROOM_CENTERS } from './layout.ts';
@@ -63,6 +63,7 @@ export class Simulation {
     private groups: EnemyKind[][] = [];
     private combatTime = 0;
     private spawnRetry = 0;
+    private bossAddCooldown = 0;
     private nextId = 1;
     private readonly random: () => number;
     constructor(random: () => number = Math.random) { this.random = random; }
@@ -92,6 +93,7 @@ export class Simulation {
         if (this.progression.wave === BOSS_SECTOR) {
             this.boss = createBoss(this.nextId++, { x: ROOM_CENTERS[BOSS_SECTOR], z: -1 });
             this.groups = []; this.telegraphs = []; this.burstShots = 0;
+            this.bossAddCooldown = 0;
             this.player.shotCooldown = .25;
             return;
         }
@@ -105,18 +107,31 @@ export class Simulation {
     private scheduleGroup(): void {
         const kinds = this.groups[0];
         if (!kinds) return;
-        const occupied = [...this.enemies, ...this.telegraphs.filter(t => !t.spawned)];
-        if (occupied.length + kinds.length + this.thermal.length > REINFORCEMENTS.maxActive) return;
+        if (this.enemies.length + this.telegraphs.filter(t => !t.spawned).length + kinds.length + this.thermal.length > REINFORCEMENTS.maxActive) return;
+        if (this.scheduleSpawns(kinds)) this.groups.shift();
+    }
+    private scheduleSpawns(kinds: readonly EnemyKind[]): boolean {
+        const occupied = [...this.livingTargets.filter(t => t.hp > 0), ...this.telegraphs.filter(t => !t.spawned)];
         const positions = spawnPositions(this.progression.wave, kinds.length, this.player, this.obstacles, this.random, occupied);
-        if (positions.length !== kinds.length) return; // Retry later; never force an unsafe point.
-        this.groups.shift();
+        if (positions.length !== kinds.length) return false; // Never force an unsafe point.
         this.telegraphs.push(...kinds.map((kind, i) => ({ ...positions[i], id: this.nextId++, kind, age: 0, spawned: false })));
+        return true;
+    }
+    private updateBossAdds(dt: number): void {
+        if (this.boss?.phase !== 2 || !this.inCombat()) return;
+        this.bossAddCooldown = Math.max(0, this.bossAddCooldown - dt);
+        if (this.bossAddCooldown > 1e-9) return;
+        const occupied = this.enemies.filter(e => e.hp > 0).length + this.pendingSpawns;
+        const slots = Math.max(0, BOSS_ADDS.maxAlive - occupied);
+        if (slots > 0) this.scheduleSpawns(BOSS_ADDS.group.slice(0, slots));
+        // Count pending warnings; full/blocked attempts never build up a backlog.
+        this.bossAddCooldown = BOSS_ADDS.cooldown;
     }
     private updateSpawns(dt: number, obstacles: Obstacle[]): void {
         for (const marker of this.telegraphs) {
             marker.age += dt;
             if (marker.spawned || marker.age + 1e-9 < SPAWN_DELAY) continue;
-            const occupied = [...this.enemies, ...this.telegraphs.filter(t => t.id !== marker.id && !t.spawned)];
+            const occupied = [...this.livingTargets.filter(t => t.hp > 0), ...this.telegraphs.filter(t => t.id !== marker.id && !t.spawned)];
             if (!safeSpawn(this.progression.wave, marker, this.player, obstacles, occupied)) {
                 const replacement = spawnPositions(this.progression.wave, 1, this.player, obstacles, this.random, occupied)[0];
                 if (replacement) {
@@ -141,7 +156,9 @@ export class Simulation {
         const angles = !enemy && this.player.acquired.has('triple') ? [-UPGRADE_VALUES.tripleAngle, 0, UPGRADE_VALUES.tripleAngle] : [0];
         for (const angle of angles) {
             const target = { x: muzzle.x + Math.cos(heading + angle), z: muzzle.z + Math.sin(heading + angle) };
-            this.projectiles.push(createProjectile(this.nextId++, muzzle, target, enemy, enemy ? ENEMY_STATS.shooter.damage : effectiveAttackStats(this.player).damage, stats.projectileSpeed, stats.projectileLife, enemy ? {} : {
+            const damage = enemy ? ENEMY_STATS.shooter.damage
+                : effectiveAttackStats(this.player).damage * (angle === 0 ? 1 : UPGRADE_VALUES.tripleSideDamage);
+            this.projectiles.push(createProjectile(this.nextId++, muzzle, target, enemy, damage, stats.projectileSpeed, stats.projectileLife, enemy ? {} : {
                 piercing: this.player.acquired.has('piercing') ? UPGRADE_VALUES.piercing : 0,
                 ricochet: this.player.acquired.has('ricochet') ? UPGRADE_VALUES.ricochet : 0,
                 homing: this.player.acquired.has('homing'), flame: this.player.acquired.has('flame'), shock: this.player.acquired.has('shock'), frost: this.player.acquired.has('frost'),
@@ -184,6 +201,7 @@ export class Simulation {
             if (boss.hp === 0) {
                 stopBoss(boss); this.burns.clear(); this.frost.clear(); this.player.overdriveCharge = 0; this.progression.finishBoss(); this.victoryTime = 0; this.kills++;
                 this.burstShots = 0; this.burstTimer = 0; this.groups = []; this.telegraphs = [];
+                this.enemies = []; this.bossAddCooldown = 0;
                 this.player.moving = false; this.player.walking = false; this.player.dashTime = 0;
                 this.events.push({ type: 'boss-death', position: { x: boss.x, z: boss.z }, id });
             }
@@ -316,6 +334,7 @@ export class Simulation {
             const wasCharging = this.boss.state === 'charge';
             const intent = updateBoss(this.boss, this.player, obstacles, roomBounds(BOSS_SECTOR), dt, this.frost.has(this.boss.id) ? UPGRADE_VALUES.frostMultiplier : 1);
             if (intent.phaseChanged) this.events.push({ type: 'boss-phase', position: { x: this.boss.x, z: this.boss.z } });
+            this.updateBossAdds(dt);
             if (intent.hit) this.damagePlayer(intent.hit, true);
             if (wasCharging || this.boss.state === 'charge' || intent.hit) attackPriority.add(this.boss.id);
             if (this.progression.phase === 'combat') for (const shot of intent.shots) {

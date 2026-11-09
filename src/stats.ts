@@ -1,6 +1,6 @@
 /** Balance values use seconds and world units. No rendering dependencies. */
 export const PLAYER_STATS = {
-    maxHp: 80, damage: 10, attackCooldown: .35, speed: 7.182, radius: .48,
+    maxHp: 80, damage: 10, attackCooldown: .35, speed: 6.65, radius: .48,
     invulnerability: .85, projectileSpeed: 25, projectileLife: 1.1,
     dashSpeed: 21, dashDuration: .18, dashCooldown: 1.65, dashInvulnerability: .28,
 };
@@ -12,6 +12,8 @@ export const ENEMY_STATS = {
     burrower: { hp: 44, damage: 18, speed: 2.99, radius: .5, firstBurrow: 2, active: 3, burrowWindup: .45, underground: .6, emergence: .9, emergenceRadius: 1.6 },
 } as const;
 export type EnemyKind = keyof typeof ENEMY_STATS;
+/** Walking pressure by zero-based sector; Boss adds inherit the final normal sector. */
+export const ENEMY_SECTOR_MOBILITY = [1, 1.03, 1.06, 1.09, 1.12, 1.15] as const;
 export interface PlayerStats {
     speed: number;
     maxHp: number;

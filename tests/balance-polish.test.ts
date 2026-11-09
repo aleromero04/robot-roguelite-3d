@@ -22,7 +22,7 @@ const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-8, `${a} 
 const ctx = (): EnemyContext => ({ playerVelocity: zero, sector: 3, random: () => .5, thermal: [] });
 
 test('balance targets change walking speed and damage without changing HP, dash or i-frames', () => {
-    close(PLAYER_STATS.speed, 6.84 * 1.05);
+    close(PLAYER_STATS.speed, 6.65);
     const kinds = ['basic', 'runner', 'shooter', 'grenadier', 'burrower'] as const;
     const before = [2.21, 3.6, 2.3, 2, 2.6], multipliers = [1.1, 1.08, 1.1, 1.1, 1.15];
     kinds.forEach((kind, i) => close(ENEMY_STATS[kind].speed, before[i] * multipliers[i]));
@@ -33,7 +33,7 @@ test('balance targets change walking speed and damage without changing HP, dash 
     assert.equal(PLAYER_STATS.invulnerability, .85);
     assert.deepEqual([PLAYER_STATS.dashSpeed, PLAYER_STATS.dashDuration, PLAYER_STATS.dashCooldown, PLAYER_STATS.dashInvulnerability], [21, .18, 1.65, .28]);
     assert.equal(ENEMY_STATS.runner.dashSpeed, 14.5); assert.equal(BOSS_STATS.chargeSpeed, 14);
-    assert.equal(BOSS_STATS.hp, 1600); assert.equal(BOSS_STATS.projectileDamage, 16); assert.equal(BOSS_STATS.chargeDamage, 28);
+    assert.equal(BOSS_STATS.hp, 1900); assert.equal(BOSS_STATS.projectileDamage, 16); assert.equal(BOSS_STATS.chargeDamage, 28);
     assert.deepEqual([GRENADE.damage, GRENADE.fireDamage, FLOOR_HAZARD.damage], [15, 5, 6]);
 });
 
@@ -158,12 +158,12 @@ test('Burrower first burrow at 2s and later active windows last 3s, with origina
 
 test('Phase 2 keeps threshold and HP, but shortens downtime and moves 25% faster than Phase 1', () => {
     const boss = createBoss(1, zero);
-    boss.hp = 801; assert.equal(updateBoss(boss, { x: 10, z: 0 }, [], bounds, dt).phaseChanged, false);
-    boss.hp = 800; assert.equal(updateBoss(boss, { x: 10, z: 0 }, [], bounds, dt).phaseChanged, true);
+    boss.hp = 951; assert.equal(updateBoss(boss, { x: 10, z: 0 }, [], bounds, dt).phaseChanged, false);
+    boss.hp = 950; assert.equal(updateBoss(boss, { x: 10, z: 0 }, [], bounds, dt).phaseChanged, true);
     assert.equal(boss.state, 'phase-change'); close(boss.timer, .8);
     assert.deepEqual(BOSS_STATS.phases.map(p => p.speed), [2.4, 3]);
-    assert.deepEqual(BOSS_STATS.phases.map(p => p.recovery), [1.5, .8]);
-    assert.deepEqual(BOSS_STATS.phases.map(p => p.approach), [2, 1.25]);
+    assert.deepEqual(BOSS_STATS.phases.map(p => p.recovery), [1.5, .7]);
+    assert.deepEqual(BOSS_STATS.phases.map(p => p.approach), [2, 1.1]);
 });
 
 test('double Charge only in Phase 2: pause, full visible warning, retarget, stable final line and no homing', () => {
@@ -219,13 +219,17 @@ test('new second-charge states cancel on death and phase changes without orphan 
     }
 });
 
-test('Phase 2 radial keeps 12+12 with 15-degree gaps and a 380ms inter-ring delay', () => {
+test('Phase 2 radial emits 12+12+12 with distinct gaps and a 380ms inter-ring delay', () => {
     const boss = createBoss(1, zero); boss.phase = 2; boss.state = 'windup'; boss.pattern = 'radial'; boss.timer = 0;
     const first = updateBoss(boss, { x: 20, z: 0 }, [], bounds, dt).shots;
     assert.equal(first.length, 12);
     for (let i = 0; i < 22; i++) assert.equal(updateBoss(boss, zero, [], bounds, dt).shots.length, 0);
     const second = updateBoss(boss, zero, [], bounds, dt).shots;
     assert.equal(second.length, 12); close(Math.atan2(second[0].direction.z, second[0].direction.x), Math.PI / 12);
+    assert.equal(boss.state, 'radial');
+    for (let i = 0; i < 22; i++) assert.equal(updateBoss(boss, zero, [], bounds, dt).shots.length, 0);
+    const third = updateBoss(boss, zero, [], bounds, dt).shots;
+    assert.equal(third.length, 12); close(Math.atan2(third[0].direction.z, third[0].direction.x), Math.PI / 24);
     assert.equal(boss.state, 'recovery');
 });
 

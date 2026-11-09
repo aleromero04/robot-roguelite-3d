@@ -323,7 +323,7 @@ test('a complete run is winnable with real movement, attacks, damage and upgrade
     sim.start();
     materialize(sim);
     const navigator = new TestNavigator();
-    const selectedUpgrades: string[] = []; let bossStart = 0;
+    const selectedUpgrades: string[] = []; let bossStart = 0, bossAddKills = 0;
     let upgrades = 0, waypointIndex = 0, previousWave = -1, moveUntil = 0;
     let combatMoved = false, combatStopped = false;
     for (let frame = 0; frame < 60 * 360; frame++) {
@@ -366,12 +366,13 @@ test('a complete run is winnable with real movement, attacks, damage and upgrade
             input = distance(sim.player, waypoint) < .01 ? { x: 0, z: 0 } : direction(sim.player,waypoint);
         }
         sim.update(dt,input);
+        if (sim.boss) bossAddKills += sim.events.filter(e => e.type === 'enemy-death').length;
         sim.events = [];
     }
     t.diagnostic(JSON.stringify({ upgrades: selectedUpgrades, seconds: Number(sim.elapsed.toFixed(2)), bossSeconds: Number((sim.elapsed - bossStart).toFixed(2)), hp: sim.player.hp }));
     assert.ok(combatMoved && combatStopped);
     assert.equal(sim.progression.phase,'complete', JSON.stringify({wave:sim.progression.wave,hp:sim.player.hp,kills:sim.kills,player:sim.player, enemies:sim.enemies}));
-    assert.equal(sim.kills,WAVES.flat().length + 1);
+    assert.equal(sim.kills,WAVES.flat().length + 1 + bossAddKills);
     assert.equal(upgrades,6);
     assert.ok(sim.player.hp > 0);
     assert.equal(sim.player.moving,false);
